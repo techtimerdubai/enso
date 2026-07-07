@@ -11,8 +11,6 @@
 
 *Free • No ads • No sign-in • Works on your phone, tablet or computer*
 
-**Ideas by Aayansh 🌟 · Built by Papa 💛**
-
 </div>
 
 ---
