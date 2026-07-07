@@ -37,14 +37,9 @@
   <!-- Bottom dock: tools + colours + size always visible -->
   <div id="toolbar" class="glass chrome" role="toolbar" aria-label="Drawing tools">
     <div class="row tools">
-      <button class="tool active" data-tool="brush" aria-label="Ink brush" aria-pressed="true" title="Ink brush (B)">
+      <button id="brushBtn" class="tool active" aria-label="Brush styles" aria-haspopup="true" aria-pressed="true" title="Brushes (B) — tap to choose a style">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3c3 3 3 8 3 11 0 2-1 4-3 4s-3-2-3-4c0-1 1-2 3-2M9 14c4-1 8-4 11-9"/></svg>
-      </button>
-      <button class="tool" data-tool="pen" aria-label="Pen" aria-pressed="false" title="Pen (P)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21l3.8-.9L20.5 6.4a2 2 0 0 0 0-2.8l-.1-.1a2 2 0 0 0-2.8 0L3.9 17.2 3 21z"/></svg>
-      </button>
-      <button class="tool" data-tool="marker" aria-label="Highlighter" aria-pressed="false" title="Highlighter (M)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M6 16l8.5-8.5 3 3L9 19l-4 1 1-4z"/></svg>
+        <span class="brush-dot" aria-hidden="true"></span>
       </button>
       <button class="tool" data-tool="eraser" aria-label="Eraser" aria-pressed="false" title="Eraser (E)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15l7-7 6 6-4 4H8l-4-3zM14 8l4 4"/></svg>
@@ -102,6 +97,16 @@
         <button id="sealClose" class="ghost">Close</button>
       </div>
       <p class="muted tiny">After “Use as signature”, tap anywhere on the canvas to stamp it.</p>
+    </div>
+  </div>
+
+  <!-- Brush picker modal -->
+  <div id="brushModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="brushTitle">
+    <div class="modal-card glass">
+      <h3 id="brushTitle">Brushes <span aria-hidden="true">🖌️</span></h3>
+      <p class="muted">Pick a brush. Pressure &amp; speed change the line — try a stylus!</p>
+      <div id="brushGrid" class="brush-grid"></div>
+      <div class="modal-actions"><button id="brushClose" class="ghost">Close</button></div>
     </div>
   </div>
 

@@ -37,6 +37,22 @@
     pendingStamp: null,      // {dataURL, img, size} awaiting placement
   };
   let rainbowHue = 0;
+  let lastBrushStyle = 'brush';
+
+  // Brush engine — each style defines how stroke width & compositing behave.
+  //  wp = pressure floor (width = wp + (1-wp)*pressure) · ws = speed thinning
+  //  const = constant width · calli = angle-driven (calligraphy nib) · neon = glow
+  const STYLES = {
+    brush:       { label:'Ink brush',   emoji:'🖌️', wp:0.25, ws:0.18, taper:6 },
+    pen:         { label:'Pen',          emoji:'🖊️', wp:0.55, ws:0,    taper:3 },
+    fineliner:   { label:'Fineliner',    emoji:'✒️', const:true, mult:0.4, taper:2 },
+    pencil:      { label:'Pencil',       emoji:'✏️', wp:0.5,  ws:0.08, taper:3, alpha:0.85, jitter:0.35 },
+    marker:      { label:'Highlighter',  emoji:'🖍️', const:true, mult:2.2, taper:0, alpha:0.38, blend:'multiply' },
+    crayon:      { label:'Crayon',       emoji:'🖍', wp:0.45, ws:0.05, taper:2, alpha:0.9, jitter:0.5, blend:'multiply' },
+    calligraphy: { label:'Calligraphy',  emoji:'🪶', calli:true, taper:3 },
+    neon:        { label:'Neon glow',    emoji:'💡', wp:0.4,  ws:0.1,  taper:4, neon:true },
+  };
+  const isDrawStyle = t => STYLES[t] != null;
 
   // bright, friendly palette (kid-first) — sumi black kept for natural ink
   const PALETTE = [
@@ -94,7 +110,7 @@
   function rebuildInk(){
     kctx.setTransform(1,0,0,1,0,0); kctx.clearRect(0,0,inkCv.width,inkCv.height);
     worldTransform(kctx);
-    drawScene(kctx, strokes, Infinity);
+    drawScene(kctx, visibleStrokes(), Infinity);   // only strokes near the viewport
     cacheValid = true;
   }
 
@@ -183,30 +199,42 @@
   function drawStroke(target, s, partial, clip){
     const src = partial ? s.pts.slice(0, partial) : s.pts;
     if(!src.length) return;
+    const st = STYLES[s.tool];
+    const runs = clip ? clipRuns(src, clip) : [src];
+    if(st && st.neon){ drawNeon(target, s, runs); return; }
     setComposite(target, s.tool);
     target.fillStyle = s.color;
-    if(src.length === 1){
-      if(!clip || pointInRect(src[0], clip)){ target.beginPath(); target.arc(src[0].x, src[0].y, Math.max(.4, src[0].w/2), 0, 7); target.fill(); }
-      resetComposite(target); return;
-    }
-    const runs = clip ? clipRuns(src, clip) : [src];
     for(const run of runs){
-      if(run.length === 1){ target.beginPath(); target.arc(run[0].x, run[0].y, Math.max(.4,run[0].w/2), 0, 7); target.fill(); continue; }
-      fillRibbon(target, run);
+      if(run.length === 1){ target.beginPath(); target.arc(run[0].x, run[0].y, Math.max(.4,run[0].w/2), 0, 7); target.fill(); }
+      else fillRibbon(target, run, 1);
     }
     resetComposite(target);
   }
 
-  function fillRibbon(target, pts){
-    const edges = ribbon(pts);
+  // Neon: soft wide glow + brighter core, layered.
+  function drawNeon(target, s, runs){
+    target.globalCompositeOperation = state.theme==='dark' ? 'lighter' : 'source-over';
+    const passes = [ [2.8, 0.18, s.color], [1.7, 0.35, s.color], [0.75, 1, lighten(s.color)] ];
+    for(const [wm, a, col] of passes){
+      target.globalAlpha = a; target.fillStyle = col;
+      for(const run of runs){
+        if(run.length === 1){ target.beginPath(); target.arc(run[0].x, run[0].y, Math.max(.4,run[0].w/2*wm), 0, 7); target.fill(); }
+        else fillRibbon(target, run, wm);
+      }
+    }
+    resetComposite(target);
+  }
+
+  function fillRibbon(target, pts, wmul){
+    const edges = ribbon(pts, wmul);
     const path = new Path2D();
     path.moveTo(edges.left[0].x, edges.left[0].y);
     for(let i=1;i<edges.left.length;i++) path.lineTo(edges.left[i].x, edges.left[i].y);
     for(let i=edges.right.length-1;i>=0;i--) path.lineTo(edges.right[i].x, edges.right[i].y);
     path.closePath();
     target.fill(path);
-    target.beginPath(); target.arc(pts[0].x, pts[0].y, Math.max(.3,pts[0].w/2), 0, 7); target.fill();
-    const e = pts[pts.length-1]; target.beginPath(); target.arc(e.x, e.y, Math.max(.3,e.w/2), 0, 7); target.fill();
+    target.beginPath(); target.arc(pts[0].x, pts[0].y, Math.max(.3,pts[0].w/2*wmul), 0, 7); target.fill();
+    const e = pts[pts.length-1]; target.beginPath(); target.arc(e.x, e.y, Math.max(.3,e.w/2*wmul), 0, 7); target.fill();
   }
 
   const pointInRect = (p,r) => p.x>=r.minX && p.x<=r.maxX && p.y>=r.minY && p.y<=r.maxY;
@@ -234,14 +262,14 @@
     return runs;
   }
 
-  function ribbon(pts){
-    const left=[], right=[];
+  function ribbon(pts, wmul){
+    const m = wmul || 1; const left=[], right=[];
     for(let i=0;i<pts.length;i++){
       const p=pts[i]; let dx,dy;
       if(i===0){ dx=pts[1].x-p.x; dy=pts[1].y-p.y; }
       else if(i===pts.length-1){ dx=p.x-pts[i-1].x; dy=p.y-pts[i-1].y; }
       else { dx=pts[i+1].x-pts[i-1].x; dy=pts[i+1].y-pts[i-1].y; }
-      const len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, hw=Math.max(.15,p.w/2);
+      const len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len, hw=Math.max(.15,p.w/2*m);
       left.push({x:p.x+nx*hw, y:p.y+ny*hw});
       right.push({x:p.x-nx*hw, y:p.y-ny*hw});
     }
@@ -249,11 +277,16 @@
   }
 
   function setComposite(t, tool){
-    if(tool==='eraser'){ t.globalCompositeOperation='destination-out'; t.globalAlpha=1; }
-    else if(tool==='marker'){ t.globalCompositeOperation = state.theme==='dark'?'screen':'multiply'; t.globalAlpha=.38; }
-    else { t.globalCompositeOperation='source-over'; t.globalAlpha=1; }
+    if(tool==='eraser'){ t.globalCompositeOperation='destination-out'; t.globalAlpha=1; return; }
+    const st = STYLES[tool] || {};
+    let blend = st.blend || 'source-over';
+    if(blend==='multiply' && state.theme==='dark') blend='screen';
+    t.globalCompositeOperation = blend; t.globalAlpha = st.alpha || 1;
   }
   const resetComposite = t => { t.globalCompositeOperation='source-over'; t.globalAlpha=1; };
+  // mix a colour toward white (for neon cores)
+  function lighten(c){ const h=cssColorToHex(c); const v=i=>parseInt(h.slice(i,i+2),16);
+    const m=x=>Math.round(x+(255-x)*0.6); return `rgb(${m(v(1))},${m(v(3))},${m(v(5))})`; }
 
   function drawStampItem(target, s){
     if(!s._img || !s._img.complete || !s._img.naturalWidth) return;   // wait until decoded
@@ -351,28 +384,28 @@
   }
 
   function addPoint(s, x, y, p, t){
-    const pts=s.pts; const base=s.size; let w;
-    if(s.tool==='marker'){ w = base*2.2; }
-    else if(s.tool==='eraser'){ w = base*2.4; }
-    else {
+    const pts=s.pts, base=s.size, st=STYLES[s.tool]; let w;
+    const last = pts[pts.length-1];
+    if(s.tool==='eraser'){ w = base*2.4; }
+    else if(st.const){ w = base*(st.mult||1); }
+    else if(st.calli){
+      let ang = last ? Math.atan2(y-last.y, x-last.x) : 0;
+      w = base * (0.2 + 0.95*Math.abs(Math.sin(ang - Math.PI/4)));   // thick across the 45° nib
+    } else {
       let speedF = 1;
-      const last = pts[pts.length-1];
-      if(last && s.tool==='brush'){
-        const dt = Math.max(1, t-(last._t||0));
-        const v = Math.hypot(x-last.x, y-last.y)/dt;
-        speedF = clamp(1 - v*0.18, 0.35, 1);
-      }
-      const pf = s.tool==='brush' ? (0.25+0.75*p) : (0.55+0.45*p);
-      w = base * pf * speedF;
-      const k = s.tool==='brush' ? 5 : 3;
-      if(pts.length < k) w *= (0.4 + 0.6*pts.length/k);
+      if(last && st.ws){ const dt=Math.max(1,t-(last._t||0)); const v=Math.hypot(x-last.x,y-last.y)/dt; speedF=clamp(1-v*st.ws,0.35,1); }
+      w = base * (st.wp + (1-st.wp)*p) * speedF;
     }
+    if(st && st.jitter) w *= (1 - st.jitter*0.5 + st.jitter*Math.random());
+    const k = (st && st.taper) ? st.taper : 3;
+    if(!(st && st.const) && pts.length < k) w *= (0.4 + 0.6*pts.length/k);
     pts.push({ x, y, w, _t:t });
   }
 
   function finalizeStroke(s){
-    if(s.tool==='pen'||s.tool==='brush'){
-      const k = s.tool==='brush'?6:3, n=s.pts.length;
+    const st=STYLES[s.tool];
+    if(st && st.taper && !st.const){
+      const k=st.taper, n=s.pts.length;
       for(let i=0;i<k && i<n;i++){ const f=0.35+0.65*(i/k); s.pts[n-1-i].w *= f; }
     }
     for(const p of s.pts) delete p._t;
@@ -400,13 +433,54 @@
     return out;
   }
 
+  /* ---------------- spatial index (uniform hash grid) ----------------
+     Buckets items by their bounding box so a frame only touches items near the
+     viewport instead of scanning the whole document — O(visible), not O(n). */
+  const CELL = 256;                     // world units per cell
+  const grid = new Map();               // "cx,cy" -> Set(item)
+  const bigItems = new Set();           // items spanning too many cells (always considered)
+  let zCounter = 0;
+  const cellsOf = bb => [Math.floor(bb.minX/CELL), Math.floor(bb.minY/CELL), Math.floor(bb.maxX/CELL), Math.floor(bb.maxY/CELL)];
+  function gridAdd(s){
+    if(!s.bb) finalizeBB(s);
+    if(s.z==null) s.z = zCounter++;
+    s._big = false;
+    const [x0,y0,x1,y1]=cellsOf(s.bb);
+    if((x1-x0+1)*(y1-y0+1) > 64){ s._big=true; bigItems.add(s); return; }
+    for(let cx=x0;cx<=x1;cx++) for(let cy=y0;cy<=y1;cy++){
+      const k=cx+','+cy; let set=grid.get(k); if(!set){ set=new Set(); grid.set(k,set); } set.add(s);
+    }
+  }
+  function gridRemove(s){
+    if(s._big){ bigItems.delete(s); return; }
+    if(!s.bb) return;
+    const [x0,y0,x1,y1]=cellsOf(s.bb);
+    for(let cx=x0;cx<=x1;cx++) for(let cy=y0;cy<=y1;cy++){
+      const k=cx+','+cy; const set=grid.get(k); if(set){ set.delete(s); if(!set.size) grid.delete(k); }
+    }
+  }
+  function gridRebuild(){ grid.clear(); bigItems.clear(); zCounter=0; for(const s of strokes){ s.z=null; gridAdd(s); } }
+  function visibleStrokes(){
+    const vr=viewRect(), pad=40/cam.scale;
+    const [x0,y0,x1,y1]=cellsOf({minX:vr.minX-pad,minY:vr.minY-pad,maxX:vr.maxX+pad,maxY:vr.maxY+pad});
+    if((x1-x0+1)*(y1-y0+1) > 6000) return strokes;   // zoomed way out: everything's on screen anyway
+    const out=new Set();
+    for(let cx=x0;cx<=x1;cx++) for(let cy=y0;cy<=y1;cy++){ const set=grid.get(cx+','+cy); if(set) for(const s of set) out.add(s); }
+    for(const s of bigItems) out.add(s);
+    return [...out].sort((a,b)=>a.z-b.z);
+  }
+
   /* ---------------- undo / redo ---------------- */
   function commit(items){
-    for(const it of items) if(!it.bb) finalizeBB(it);
-    strokes.push(...items); opSizes.push(items.length); invalidate(); saveSoon();
+    for(const it of items){ if(!it.bb) finalizeBB(it); }
+    strokes.push(...items); opSizes.push(items.length);
+    for(const it of items) gridAdd(it);
+    invalidate(); saveSoon();
   }
-  function undo(){ if(!opSizes.length){ return; } const n=opSizes.pop(); redoStack.push(strokes.splice(-n)); invalidate(); saveSoon(); }
-  function redo(){ if(!redoStack.length) return; const items=redoStack.pop(); strokes.push(...items); opSizes.push(items.length); invalidate(); saveSoon(); }
+  function undo(){ if(!opSizes.length){ return; } const n=opSizes.pop(); const removed=strokes.splice(-n);
+    for(const it of removed) gridRemove(it); redoStack.push(removed); invalidate(); saveSoon(); }
+  function redo(){ if(!redoStack.length) return; const items=redoStack.pop(); strokes.push(...items); opSizes.push(items.length);
+    for(const it of items) gridAdd(it); invalidate(); saveSoon(); }
 
   /* ---------------- pinch / wheel zoom + inertia ---------------- */
   const panVel = { x:0, y:0 }; let panT = 0, inertiaRAF = 0;
@@ -469,8 +543,8 @@
   const sw = document.getElementById('swatches');
   const swatchEls = [];
   function setColor(c, el){ state.color=c; state.rainbow=false;
-    if(state.tool==='eraser'||state.tool==='pan') selectTool('brush');
-    swatchEls.forEach(n=>n.classList.remove('active')); if(el) el.classList.add('active'); }
+    if(!isDrawStyle(state.tool)) selectTool(lastBrushStyle);
+    swatchEls.forEach(n=>n.classList.remove('active')); if(el) el.classList.add('active'); updateBrushDot(); }
   PALETTE.forEach((s,i)=>{
     const el=document.createElement('button'); el.className='swatch'+(i===0?' active':''); el.type='button';
     el.style.background=s.c; el.title=s.n; el.setAttribute('aria-label', s.n);
@@ -481,8 +555,8 @@
   // rainbow / magic swatch
   const rainbowEl=document.createElement('button'); rainbowEl.type='button'; rainbowEl.className='swatch rainbow'; rainbowEl.title='Rainbow (magic)'; rainbowEl.setAttribute('aria-label','Rainbow magic colour');
   rainbowEl.addEventListener('click',()=>{ state.rainbow=true;
-    if(state.tool==='eraser'||state.tool==='pan') selectTool('brush');
-    swatchEls.forEach(n=>n.classList.remove('active')); rainbowEl.classList.add('active'); buzz(6); toast('🌈 Rainbow! Every line a new colour'); });
+    if(!isDrawStyle(state.tool)) selectTool(lastBrushStyle);
+    swatchEls.forEach(n=>n.classList.remove('active')); rainbowEl.classList.add('active'); updateBrushDot(); buzz(6); toast('🌈 Rainbow! Every line a new colour'); });
   sw.appendChild(rainbowEl); swatchEls.push(rainbowEl);
   // custom colour swatch
   const customEl=document.createElement('label'); customEl.className='swatch custom'; customEl.title='Custom colour'; customEl.setAttribute('aria-label','Pick a custom colour');
@@ -491,12 +565,32 @@
   customInput.addEventListener('input',()=>{ if(validHex(customInput.value)){ customEl.style.background=customInput.value; setColor(customInput.value, customEl); } });
   sw.appendChild(customEl); swatchEls.push(customEl);
 
+  const brushBtn = document.getElementById('brushBtn'), brushDot = brushBtn.querySelector('.brush-dot');
   document.querySelectorAll('.tool[data-tool]').forEach(b=>b.addEventListener('click',()=>{ selectTool(b.dataset.tool); buzz(6); }));
   function selectTool(tool){ state.tool=tool; clearPendingStamp();
+    if(isDrawStyle(tool)) lastBrushStyle = tool;
+    const draw = isDrawStyle(tool);
+    brushBtn.classList.toggle('active', draw); brushBtn.setAttribute('aria-pressed', draw?'true':'false');
     document.querySelectorAll('.tool[data-tool]').forEach(b=>{ const on=b.dataset.tool===tool; b.classList.toggle('active',on); b.setAttribute('aria-pressed', on?'true':'false'); });
     document.body.classList.toggle('pan', tool==='pan');
     document.body.classList.toggle('erase', tool==='eraser');
+    updateBrushDot();
   }
+  function updateBrushDot(){ brushDot.style.background = state.rainbow
+    ? 'conic-gradient(from 0deg,#ff4d4f,#ffd21a,#37c86b,#20b8e6,#9a5bff,#ff4d4f)' : state.color; }
+
+  // brush style picker
+  const brushModal=document.getElementById('brushModal'), brushGrid=document.getElementById('brushGrid');
+  Object.entries(STYLES).forEach(([key,st])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='brush'; b.dataset.style=key;
+    b.innerHTML=`<span class="em" aria-hidden="true">${st.emoji}</span><span>${st.label}</span>`; b.setAttribute('aria-label', st.label);
+    b.addEventListener('click',()=>{ selectTool(key); highlightBrush(); brushModal.classList.add('hidden'); buzz(8); toast(st.emoji+' '+st.label); });
+    brushGrid.appendChild(b);
+  });
+  function highlightBrush(){ brushGrid.querySelectorAll('.brush').forEach(b=>b.classList.toggle('on', b.dataset.style===state.tool)); }
+  function openBrushPicker(){ highlightBrush(); brushModal.classList.remove('hidden'); pushGuard(); }
+  brushBtn.addEventListener('click',()=>{ if(isDrawStyle(state.tool)) openBrushPicker(); else selectTool(lastBrushStyle); buzz(6); });
+  document.getElementById('brushClose').addEventListener('click',()=>brushModal.classList.add('hidden'));
   const sizeRange=document.getElementById('sizeRange');
   sizeRange.addEventListener('input',()=>{ state.size=+sizeRange.value; });
   document.getElementById('undo').addEventListener('click', ()=>{ undo(); buzz(6); });
@@ -531,7 +625,7 @@
     else if(a==='replay') startReplay();
     else if(a==='seal') openSeal();
     else if(a==='sticker') openStickers();
-    else if(a==='clear'){ if(confirm('Clear the whole canvas? This cannot be undone.')){ strokes=[];opSizes=[];redoStack=[];invalidate();save(); toast('Fresh paper ✨'); } }
+    else if(a==='clear'){ if(confirm('Clear the whole canvas? This cannot be undone.')){ strokes=[];opSizes=[];redoStack=[];gridRebuild();invalidate();save(); toast('Fresh paper ✨'); } }
   }));
   const axesLabel=document.getElementById('axesLabel');
   function cycleAxes(){ const opts=[2,3,4,6,8,12]; state.axes=opts[(opts.indexOf(state.axes)+1)%opts.length];
@@ -710,14 +804,15 @@
   /* ---------------- Android back button closes overlays ---------------- */
   let guardActive=false;
   function anyOverlay(){ return !sheet.classList.contains('hidden') || !sealModal.classList.contains('hidden')
-      || !stickerModal.classList.contains('hidden') || replay.active || document.body.classList.contains('zen') || !!state.pendingStamp; }
+      || !stickerModal.classList.contains('hidden') || !brushModal.classList.contains('hidden')
+      || replay.active || document.body.classList.contains('zen') || !!state.pendingStamp; }
   function pushGuard(){ if(!guardActive){ guardActive=true; try{ history.pushState({enso:1},''); }catch(e){} } }
-  function closeAllOverlays(){ toggleSheet(false); sealModal.classList.add('hidden'); stickerModal.classList.add('hidden');
+  function closeAllOverlays(){ toggleSheet(false); sealModal.classList.add('hidden'); stickerModal.classList.add('hidden'); brushModal.classList.add('hidden');
     if(replay.active) exitReplay(); document.body.classList.remove('zen'); clearPendingStamp(); }
   window.addEventListener('popstate', ()=>{ guardActive=false; if(anyOverlay()) closeAllOverlays(); });
 
   // click on modal backdrop closes it
-  [sealModal, stickerModal].forEach(m=>m.addEventListener('click', e=>{ if(e.target===m) m.classList.add('hidden'); }));
+  [sealModal, stickerModal, brushModal].forEach(m=>m.addEventListener('click', e=>{ if(e.target===m) m.classList.add('hidden'); }));
 
   /* ---------------- keyboard ---------------- */
   addEventListener('keydown', e=>{
@@ -759,7 +854,7 @@
   let hintT=setTimeout(hideHint,6500); function hideHint(){ const h=document.getElementById('hint'); if(h) h.style.opacity='0'; clearTimeout(hintT); }
 
   /* ---------------- boot ---------------- */
-  load(); selectTool(state.tool); updateHud();
+  load(); gridRebuild(); selectTool(state.tool); updateHud();
   addEventListener('resize', resize);
   if(window.visualViewport) visualViewport.addEventListener('resize', resize);
   resize();

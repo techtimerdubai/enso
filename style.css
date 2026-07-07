@@ -128,6 +128,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-vis
 .modal-actions .primary:hover{background:var(--accent-2)}
 .modal-actions .ghost{background:transparent}
 
+/* Brush button indicator + picker */
+#brushBtn{position:relative}
+.brush-dot{position:absolute;right:5px;bottom:5px;width:8px;height:8px;border-radius:50%;
+  background:currentColor;box-shadow:0 0 0 1.5px rgba(0,0,0,.35);pointer-events:none}
+.brush-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}
+.brush-grid .brush{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--brd);
+  border-radius:12px;background:rgba(255,255,255,.05);color:var(--fg);cursor:pointer;font-size:14px;
+  transition:background .12s,transform .1s;min-height:52px;text-align:left}
+.brush-grid .brush:hover{background:rgba(255,255,255,.12)}
+.brush-grid .brush:active{transform:scale(.97)}
+.brush-grid .brush.on{border-color:var(--accent);background:rgba(224,80,58,.16)}
+.brush-grid .brush .em{font-size:22px;width:26px;text-align:center;flex:0 0 auto}
+
 /* Sticker picker */
 .sticker-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0}
 .sticker-grid .sticker{font-size:30px;line-height:1;padding:10px 0;border:none;border-radius:14px;
