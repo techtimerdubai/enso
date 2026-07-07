@@ -6,16 +6,17 @@
   'use strict';
 
   const canvas = document.getElementById('paper');
-  const ctx = canvas.getContext('2d');
-  // offscreen layers: paper+grid, committed ink, and a live-draw overlay
-  const paperCv = document.createElement('canvas'), pctx = paperCv.getContext('2d');
-  const inkCv   = document.createElement('canvas'), kctx = inkCv.getContext('2d');
-  const overCv  = document.createElement('canvas'), octx = overCv.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  if(!ctx){ document.body.innerHTML = '<p style="color:#eee;font:16px system-ui;padding:24px">Sorry — your browser can’t run Ensō (no canvas support). Try a recent Chrome, Safari, Firefox or Edge.</p>'; return; }
+  // two offscreen layers: committed ink (cached) + a live-draw overlay. Paper+grid are drawn
+  // straight onto the visible canvas each frame (cheap) — one fewer full-screen buffer to hold.
+  const inkCv  = document.createElement('canvas'), kctx = inkCv.getContext('2d');
+  const overCv = document.createElement('canvas'), octx = overCv.getContext('2d');
 
   /* ---------------- camera & document ---------------- */
   const cam = { x: 0, y: 0, scale: 1 };
   let dpr = clamp(window.devicePixelRatio || 1, 1, 3);
-  let cacheValid = false;                 // are paperCv / inkCv up to date for current cam?
+  let cacheValid = false;                 // is inkCv up to date for the current camera?
   const invalidate = () => { cacheValid = false; requestRender(); };
 
   let strokes = [];          // committed items (strokes + stamps), in draw order
@@ -72,8 +73,8 @@
   /* ---------------- sizing (crisp on every device) ---------------- */
   function resize(){
     dpr = clamp(window.devicePixelRatio || 1, 1, 3);
-    const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
-    for(const c of [canvas, paperCv, inkCv, overCv]){ c.width = w; c.height = h; }
+    const w = Math.max(1, Math.round(innerWidth * dpr)), h = Math.max(1, Math.round(innerHeight * dpr));
+    for(const c of [canvas, inkCv, overCv]){ if(c.width!==w) c.width = w; if(c.height!==h) c.height = h; }
     canvas.style.width = innerWidth + 'px';
     canvas.style.height = innerHeight + 'px';
     invalidate();
@@ -87,47 +88,48 @@
   let needsRender = false;
   const requestRender = () => { if(!needsRender){ needsRender = true; requestAnimationFrame(render); } };
 
-  function rebuildCache(){
-    // paper + grid
-    pctx.setTransform(dpr,0,0,dpr,0,0);
-    pctx.fillStyle = paperColor(); pctx.fillRect(0,0,innerWidth,innerHeight);
-    if(state.grid) drawGrid(pctx);
-    // committed ink (transparent; eraser erases ink only)
+  // Re-rasterise all committed strokes from VECTORS at the current camera scale, into inkCv.
+  // Because this runs on every camera change, strokes stay pixel-sharp at any zoom level.
+  function rebuildInk(){
     kctx.setTransform(1,0,0,1,0,0); kctx.clearRect(0,0,inkCv.width,inkCv.height);
     worldTransform(kctx);
     drawScene(kctx, strokes, Infinity);
     cacheValid = true;
   }
 
+  function paintPaper(){
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = paperColor(); ctx.fillRect(0,0,innerWidth,innerHeight);
+    if(state.grid) drawGrid(ctx);
+  }
+
   function render(){
     needsRender = false;
-    if(replay.active){ renderReplay(); return; }
-    if(!cacheValid) rebuildCache();
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.drawImage(paperCv, 0, 0);
+    try { renderInner(); }
+    catch(err){ /* never let one bad frame kill the app */ }
+  }
+  function renderInner(){
+    paintPaper();
+    if(replay.active){
+      octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
+      worldTransform(octx);
+      drawScene(octx, strokes, replay.revealed);
+      ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(overCv, 0, 0);
+      return;
+    }
+    if(!cacheValid) rebuildInk();
     if(live){
-      // committed ink + the live stroke, composited so a live eraser reveals paper
+      // committed ink + the live stroke, composited so a live eraser reveals paper only
       octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
       octx.drawImage(inkCv, 0, 0);
       worldTransform(octx);
       drawStroke(octx, live);
       if(state.sym) for(const c of symCopies(live)) drawStroke(octx, c);
-      ctx.drawImage(overCv, 0, 0);
+      ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(overCv, 0, 0);
     } else {
-      ctx.drawImage(inkCv, 0, 0);
+      ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(inkCv, 0, 0);
     }
     if(state.sym) drawSymGuide();
-  }
-
-  function renderReplay(){
-    if(!cacheValid) rebuildCache();               // paperCv valid for current (fixed) cam
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.drawImage(paperCv, 0, 0);
-    octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
-    worldTransform(octx);
-    drawScene(octx, strokes, replay.revealed);
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.drawImage(overCv, 0, 0);
   }
 
   function viewRect(){ const a=toWorld(0,0), b=toWorld(innerWidth,innerHeight);
@@ -530,9 +532,10 @@
     return st;
   }
   function emojiDataURL(em){
-    const S=128, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
-    x.textAlign='center'; x.textBaseline='middle'; x.font='96px "Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",sans-serif';
-    x.fillText(em, S/2, S/2+6); return c.toDataURL('image/png');
+    // render large so stickers stay sharp when the canvas is zoomed in
+    const S=256, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+    x.textAlign='center'; x.textBaseline='middle'; x.font='200px "Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",sans-serif';
+    x.fillText(em, S/2, S/2+10); return c.toDataURL('image/png');
   }
 
   function renderSeal(text){
@@ -593,10 +596,12 @@
     if(!canvas.captureStream || typeof MediaRecorder==='undefined'){ toast('Recording not supported on this browser'); return; }
     try{
       const type = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-      const stream=canvas.captureStream(30); replay.chunks=[];
+      const stream=canvas.captureStream(30); replay.chunks=[]; replay.stream=stream;
       replay.rec=new MediaRecorder(stream,{ mimeType:type, videoBitsPerSecond:8_000_000 });
       replay.rec.ondataavailable=e=>{ if(e.data.size) replay.chunks.push(e.data); };
-      replay.rec.onstop=()=>{ const blob=new Blob(replay.chunks,{type:'video/webm'}); downloadBlob(blob,'enso-'+stamp()+'.webm'); replay.rec=null; rRec.classList.remove('recording'); rRec.textContent='● REC'; toast('Video saved 🎬'); };
+      replay.rec.onstop=()=>{ const blob=new Blob(replay.chunks,{type:'video/webm'}); downloadBlob(blob,'enso-'+stamp()+'.webm');
+        try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} replay.rec=null; replay.stream=null;
+        rRec.classList.remove('recording'); rRec.textContent='● REC'; toast('Video saved 🎬'); };
       replay.rec.start(); rRec.classList.add('recording'); rRec.textContent='◼ STOP';
       replay.revealed=0; replay.playing=true; replay.last=performance.now(); rToggle.textContent='⏸';
       toast('Recording the replay…');
@@ -716,5 +721,11 @@
   resize();
   addEventListener('beforeunload', save);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) save(); });
-  if('serviceWorker' in navigator) addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  if('serviceWorker' in navigator){
+    let refreshing=false;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(refreshing) return; refreshing=true; location.reload(); });
+    addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').then(reg=>{
+      reg.addEventListener('updatefound',()=>{ const nw=reg.installing; if(nw) nw.addEventListener('statechange',()=>{ if(nw.state==='installed' && navigator.serviceWorker.controller) nw.postMessage&&reg.waiting&&reg.waiting.postMessage('skipWaiting'); }); });
+    }).catch(()=>{}); });
+  }
 })();
