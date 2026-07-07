@@ -33,6 +33,21 @@ body.zen .chrome{opacity:0;pointer-events:none;transform:translateY(6px)}
 
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
+/* Mobile "get the app" prompt */
+#appPrompt{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);
+  z-index:25;display:flex;align-items:center;gap:11px;padding:8px 8px 8px 10px;width:min(430px,calc(100vw - 20px));
+  animation:apdrop .3s cubic-bezier(.2,1.1,.4,1)}
+@keyframes apdrop{from{opacity:0;transform:translateX(-50%) translateY(-16px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+#appPrompt .ap-icon{width:40px;height:40px;border-radius:11px;flex:0 0 auto}
+#appPrompt .ap-text{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+#appPrompt .ap-text b{font-size:14px}
+#appPrompt .ap-text span{font-size:11.5px;color:var(--muted)}
+#appPrompt .ap-get{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;flex:0 0 auto}
+#appPrompt .ap-get:active{transform:scale(.94)}
+#appPrompt .ap-close{background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:4px 6px;flex:0 0 auto;border-radius:8px}
+#appPrompt .ap-close:hover{color:var(--fg)}
+body.apshow #brand{opacity:0;pointer-events:none}
+
 /* Visible keyboard focus for everyone */
 button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible{
   outline:2px solid var(--focus);outline-offset:2px;border-radius:11px}

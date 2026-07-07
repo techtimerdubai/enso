@@ -8,6 +8,8 @@
   <meta name="color-scheme" content="dark light" />
   <meta name="description" content="Ensō 円相 — a free infinite-canvas drawing app for web, Android & Apple. Sumi-e ink brush, mandala mode, time-lapse replay, personal ink-seal signature, and one-tap free sharing." />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Ensō 円相" />
+  <meta property="og:image:alt" content="Ensō — an endless magic drawing page" />
   <meta property="og:url" content="https://techtimerdubai.github.io/Enso/" />
   <meta property="og:title" content="Ensō 円相 — an endless magic drawing page" />
   <meta property="og:description" content="Free · ad-free · no sign-in. Draw forever on an endless canvas. Ideas by Aayansh, built by Papa 💛" />
@@ -30,6 +32,14 @@
 </head>
 <body>
   <canvas id="paper" role="img" aria-label="Infinite drawing canvas. Draw with a pen, stylus, mouse or finger."></canvas>
+
+  <!-- Mobile "get the app" prompt -->
+  <div id="appPrompt" class="glass hidden" role="dialog" aria-label="Install Ensō for the best experience">
+    <img class="ap-icon" src="icons/icon-192.png" alt="" width="40" height="40" />
+    <div class="ap-text"><b>Ensō 円相</b><span id="apMsg">Add to your home screen for the best experience</span></div>
+    <button id="apGet" class="ap-get">Get app</button>
+    <button id="apClose" class="ap-close" aria-label="Not now">✕</button>
+  </div>
 
   <!-- Brand -->
   <div id="brand" class="glass chrome">

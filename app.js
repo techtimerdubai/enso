@@ -1245,7 +1245,7 @@
   /* ---------------- install (Add to Home screen / desktop shortcut) ---------------- */
   let deferredPrompt = null;
   addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; });
-  addEventListener('appinstalled', () => { deferredPrompt = null; toast('Installed! Find Ensō on your home screen 🎉'); });
+  addEventListener('appinstalled', () => { deferredPrompt = null; hideAppPrompt(true); toast('Installed! Find Ensō on your home screen 🎉'); });
   async function doInstall(){
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
     if(standalone){ toast('Ensō is already installed ✓'); return; }
@@ -1256,6 +1256,26 @@
     }
     if(/iphone|ipad|ipod/i.test(navigator.userAgent)) toast('On iPhone/iPad: tap Share ⬆ then “Add to Home Screen”');
     else toast('Open your browser menu → “Install app” / “Add to Home screen”');
+  }
+
+  // Mobile "get the app" prompt — shown when opened in a phone/tablet browser
+  const appPrompt=document.getElementById('appPrompt');
+  function hideAppPrompt(remember){ if(appPrompt) appPrompt.classList.add('hidden'); document.body.classList.remove('apshow'); if(remember){ try{ localStorage.setItem('enso.getapp', String(Date.now())); }catch(e){} } }
+  const apGet=document.getElementById('apGet'); if(apGet) apGet.addEventListener('click', ()=>{ doInstall(); if(deferredPrompt) hideAppPrompt(true); });
+  const apClose=document.getElementById('apClose'); if(apClose) apClose.addEventListener('click', ()=>hideAppPrompt(true));
+  function maybeShowAppPrompt(){
+    if(!appPrompt) return;
+    if(matchMedia('(display-mode: standalone)').matches || navigator.standalone) return;   // already installed
+    const ua = navigator.userAgent || '';
+    const isIpadOS = /Macintosh/.test(ua) && (navigator.maxTouchPoints||0) > 1;
+    if(!(/android|iphone|ipad|ipod/i.test(ua) || isIpadOS)) return;                          // mobile/tablet browsers only
+    const dis = +(localStorage.getItem('enso.getapp')||0);
+    if(Date.now() - dis < 7*24*3600*1000) return;                                            // snoozed for 7 days
+    if(/iphone|ipad|ipod/i.test(ua) || isIpadOS){                                            // iOS has no install prompt
+      const m=document.getElementById('apMsg'); if(m) m.textContent='Tap Share ⬆ then “Add to Home Screen” for the best experience';
+      if(apGet) apGet.style.display='none';
+    }
+    setTimeout(()=>{ appPrompt.classList.remove('hidden'); document.body.classList.add('apshow'); }, 1500);
   }
 
   /* ---------------- support / crypto donate ---------------- */
@@ -1287,7 +1307,7 @@
   }
 
   /* ---------------- boot ---------------- */
-  load(); gridRebuild(); selectTool(state.tool); updateHud();
+  load(); gridRebuild(); selectTool(state.tool); updateHud(); maybeShowAppPrompt();
   addEventListener('resize', resize);
   if(window.visualViewport) visualViewport.addEventListener('resize', resize);
   resize();
