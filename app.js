@@ -305,13 +305,14 @@
   canvas.addEventListener('contextmenu', e => e.preventDefault());
 
   canvas.addEventListener('pointerdown', e => {
-    stopInertia();
+    stopInertia(); stopCamAnim();
     if(e.pointerType==='pen') penDownCount++;
     // palm rejection — ignore fingers while a stylus is drawing
     if(e.pointerType==='touch' && penDownCount>0) return;
     try { canvas.setPointerCapture(e.pointerId); } catch(_){}
     pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
 
+    if(isEyedrop() && e.isPrimary){ doSample(e.clientX, e.clientY); return; }
     if(state.pendingStamp && e.isPrimary && pointers.size===1){ placeStamp(e.clientX, e.clientY); return; }
 
     if(pointers.size >= 2){
@@ -517,7 +518,7 @@
     updateHud();
   }
   canvas.addEventListener('wheel', e => {
-    e.preventDefault(); stopInertia();
+    e.preventDefault(); stopInertia(); stopCamAnim();
     if(e.ctrlKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)){
       zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY*0.0016));
     } else { cam.x -= e.deltaX/cam.scale; cam.y -= e.deltaY/cam.scale; }
@@ -528,15 +529,24 @@
   document.addEventListener('dblclick', e=>e.preventDefault());
   document.addEventListener('touchmove', e=>{ if(e.touches.length>1) e.preventDefault(); }, {passive:false});
 
+  // smooth animated camera move (log-interpolated scale for a natural zoom feel)
+  let camAnim = 0;
+  function stopCamAnim(){ if(camAnim){ cancelAnimationFrame(camAnim); camAnim=0; } }
+  function animateCam(tx, ty, ts, dur){
+    stopCamAnim(); dur = dur || 340;
+    const sx=cam.x, sy=cam.y, ss=cam.scale, t0=performance.now(), ease=t=>1-Math.pow(1-t,3);
+    const step=()=>{ const t=Math.min(1,(performance.now()-t0)/dur), k=ease(t);
+      cam.scale = ss*Math.pow(ts/ss, k); cam.x = sx+(tx-sx)*k; cam.y = sy+(ty-sy)*k;
+      updateHud(); invalidate();
+      if(t<1) camAnim=requestAnimationFrame(step); else { camAnim=0; saveSoon(); } };
+    camAnim=requestAnimationFrame(step);
+  }
   function zoomToFit(){
     const bb = bounds();
-    if(!bb){ cam.x=0; cam.y=0; cam.scale=1; updateHud(); invalidate(); saveSoon(); return; }
+    if(!bb){ animateCam(0,0,1); return; }
     const w=bb.maxX-bb.minX, h=bb.maxY-bb.minY;
     const s = clamp(Math.min(innerWidth/w, innerHeight/h)*0.9, MIN_SCALE, 8);
-    cam.scale = s;
-    cam.x = innerWidth/(2*s) - (bb.minX+w/2);
-    cam.y = innerHeight/(2*s) - (bb.minY+h/2);
-    updateHud(); invalidate(); saveSoon();
+    animateCam(innerWidth/(2*s)-(bb.minX+w/2), innerHeight/(2*s)-(bb.minY+h/2), s);
   }
 
   /* ---------------- UI: swatches / tools / size ---------------- */
@@ -562,8 +572,35 @@
   const customEl=document.createElement('label'); customEl.className='swatch custom'; customEl.title='Custom colour'; customEl.setAttribute('aria-label','Pick a custom colour');
   customEl.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><input type="color" value="#2f6bff" aria-label="Custom colour picker">';
   const customInput=customEl.querySelector('input');
-  customInput.addEventListener('input',()=>{ if(validHex(customInput.value)){ customEl.style.background=customInput.value; setColor(customInput.value, customEl); } });
+  customInput.addEventListener('input',()=>{ if(validHex(customInput.value)){ customEl.style.background=customInput.value; setColor(customInput.value, customEl); addRecent(customInput.value); } });
   sw.appendChild(customEl); swatchEls.push(customEl);
+  // eyedropper — grab a colour from the drawing
+  const eyeEl=document.createElement('button'); eyeEl.type='button'; eyeEl.className='swatch eyedrop'; eyeEl.title='Eyedropper — grab a colour'; eyeEl.setAttribute('aria-label','Eyedropper');
+  eyeEl.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l4 4M17.5 2.5a2.1 2.1 0 0 1 3 3l-9 9-4 1 1-4 9-9z"/></svg>';
+  eyeEl.addEventListener('click', pickEyedropper);
+  sw.appendChild(eyeEl);
+  // recent colours (appear as you use custom colours / the eyedropper)
+  const recentWrap=document.createElement('span'); recentWrap.style.display='contents'; sw.appendChild(recentWrap);
+  let recent = (()=>{ try{ return JSON.parse(localStorage.getItem('enso.recent')||'[]'); }catch(e){ return []; } })();
+  function addRecent(c){ if(!validHex(c)) return; c=c.toLowerCase();
+    if(PALETTE.some(p=>p.c.toLowerCase()===c)) return;
+    recent = [c, ...recent.filter(x=>x!==c)].slice(0,4);
+    try{ localStorage.setItem('enso.recent', JSON.stringify(recent)); }catch(e){}
+    renderRecent(); }
+  function renderRecent(){ recentWrap.innerHTML='';
+    for(const c of recent){ const el=document.createElement('button'); el.type='button'; el.className='swatch recent'; el.style.background=c; el.title=c; el.setAttribute('aria-label','Recent colour '+c);
+      el.addEventListener('click',()=>{ setColor(c, null); buzz(6); }); recentWrap.appendChild(el); } }
+  renderRecent();
+  let eyedropMode=false;
+  async function pickEyedropper(){
+    buzz(6);
+    if(window.EyeDropper){ try{ const r=await new EyeDropper().open(); const hex=r.sRGBHex.toLowerCase(); setColor(hex); addRecent(hex); customInput.value=hex; customEl.style.background=hex; }catch(e){} }
+    else { eyedropMode=true; document.body.classList.add('eyedrop'); toast('Tap the drawing to grab its colour'); }
+  }
+  function sampleColorAt(sx,sy){ try{ const d=ctx.getImageData(Math.round(sx*dpr),Math.round(sy*dpr),1,1).data;
+    const hex='#'+[d[0],d[1],d[2]].map(v=>('0'+v.toString(16)).slice(-2)).join(''); setColor(hex); addRecent(hex); }catch(e){} }
+  const isEyedrop = () => eyedropMode;
+  const doSample = (x,y)=>{ sampleColorAt(x,y); eyedropMode=false; document.body.classList.remove('eyedrop'); };
 
   const brushBtn = document.getElementById('brushBtn'), brushDot = brushBtn.querySelector('.brush-dot');
   document.querySelectorAll('.tool[data-tool]').forEach(b=>b.addEventListener('click',()=>{ selectTool(b.dataset.tool); buzz(6); }));
@@ -614,7 +651,7 @@
   document.addEventListener('click', e=>{ if(!sheet.classList.contains('hidden') && !sheet.contains(e.target) && e.target!==menuBtn && !menuBtn.contains(e.target)) toggleSheet(false); });
   sheet.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>{
     const a=b.dataset.act; toggleSheet(false); buzz(6);
-    if(a==='home'){ cam.x=0;cam.y=0;cam.scale=1;updateHud();invalidate();saveSoon(); }
+    if(a==='home'){ animateCam(0,0,1); }
     else if(a==='fit') zoomToFit();
     else if(a==='theme'){ state.theme=state.theme==='dark'?'light':'dark'; invalidate(); saveSoon(); }
     else if(a==='grid'){ state.grid=!state.grid; invalidate(); saveSoon(); }
