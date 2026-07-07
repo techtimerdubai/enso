@@ -15,6 +15,7 @@
 
   /* ---------------- camera & document ---------------- */
   const cam = { x: 0, y: 0, scale: 1 };
+  const MIN_SCALE = 0.004, MAX_SCALE = 1000;   // 0.4% … 100000% — deep "worlds within worlds" zoom, precision-safe
   let dpr = clamp(window.devicePixelRatio || 1, 1, 3);
   let cacheValid = false;                 // is inkCv up to date for the current camera?
   const invalidate = () => { cacheValid = false; requestRender(); };
@@ -123,8 +124,9 @@
       octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
       octx.drawImage(inkCv, 0, 0);
       worldTransform(octx);
-      drawStroke(octx, live);
-      if(state.sym) for(const c of symCopies(live)) drawStroke(octx, c);
+      const clip = clipRect();
+      drawStroke(octx, live, 0, clip);
+      if(state.sym) for(const c of symCopies(live)) drawStroke(octx, c, 0, clip);
       ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(overCv, 0, 0);
     } else {
       ctx.setTransform(1,0,0,1,0,0); ctx.drawImage(inkCv, 0, 0);
@@ -135,8 +137,14 @@
   function viewRect(){ const a=toWorld(0,0), b=toWorld(innerWidth,innerHeight);
     return { minX:a.x, minY:a.y, maxX:b.x, maxY:b.y }; }
 
+  // expand the world view rect by ~half a screen so stroke caps at run boundaries stay off-screen
+  function clipRect(){
+    const vr = viewRect();
+    const mx = (vr.maxX-vr.minX)*0.4 + 8/cam.scale, my = (vr.maxY-vr.minY)*0.4 + 8/cam.scale;
+    return { minX:vr.minX-mx, minY:vr.minY-my, maxX:vr.maxX+mx, maxY:vr.maxY+my };
+  }
   function drawScene(target, list, upTo){
-    const vr = viewRect(); const pad = 40/cam.scale;
+    const vr = viewRect(); const pad = 40/cam.scale; const clip = clipRect();
     let count = 0;
     for(const s of list){
       const len = s.tool==='stamp' ? 1 : Math.max(1, s.pts.length);
@@ -145,7 +153,7 @@
       if(revealHere <= 0){ if(upTo!==Infinity && count > upTo) break; else continue; }
       if(s.bb && (s.bb.maxX < vr.minX-pad || s.bb.minX > vr.maxX+pad || s.bb.maxY < vr.minY-pad || s.bb.minY > vr.maxY+pad)) continue;
       if(s.tool==='stamp') drawStampItem(target, s);
-      else drawStroke(target, s, revealHere < len ? Math.ceil(revealHere) : 0);
+      else drawStroke(target, s, revealHere < len ? Math.ceil(revealHere) : 0, clip);
     }
   }
 
@@ -168,16 +176,28 @@
     ctx.restore();
   }
 
-  /* ---- draw one vector stroke as a smooth variable-width ribbon ---- */
-  function drawStroke(target, s, partial){
-    const pts = partial ? s.pts.slice(0, partial) : s.pts;
-    if(!pts.length) return;
+  /* ---- draw one vector stroke as a smooth variable-width ribbon ----
+     `clip` (world rect) limits geometry to the visible area so device coordinates
+     stay small — this keeps rendering sharp AND correct at extreme zoom, where an
+     un-clipped off-screen vertex would exceed the canvas coordinate limit. */
+  function drawStroke(target, s, partial, clip){
+    const src = partial ? s.pts.slice(0, partial) : s.pts;
+    if(!src.length) return;
     setComposite(target, s.tool);
     target.fillStyle = s.color;
-    if(pts.length === 1){
-      target.beginPath(); target.arc(pts[0].x, pts[0].y, Math.max(.4, pts[0].w/2), 0, 7); target.fill();
+    if(src.length === 1){
+      if(!clip || pointInRect(src[0], clip)){ target.beginPath(); target.arc(src[0].x, src[0].y, Math.max(.4, src[0].w/2), 0, 7); target.fill(); }
       resetComposite(target); return;
     }
+    const runs = clip ? clipRuns(src, clip) : [src];
+    for(const run of runs){
+      if(run.length === 1){ target.beginPath(); target.arc(run[0].x, run[0].y, Math.max(.4,run[0].w/2), 0, 7); target.fill(); continue; }
+      fillRibbon(target, run);
+    }
+    resetComposite(target);
+  }
+
+  function fillRibbon(target, pts){
     const edges = ribbon(pts);
     const path = new Path2D();
     path.moveTo(edges.left[0].x, edges.left[0].y);
@@ -187,7 +207,31 @@
     target.fill(path);
     target.beginPath(); target.arc(pts[0].x, pts[0].y, Math.max(.3,pts[0].w/2), 0, 7); target.fill();
     const e = pts[pts.length-1]; target.beginPath(); target.arc(e.x, e.y, Math.max(.3,e.w/2), 0, 7); target.fill();
-    resetComposite(target);
+  }
+
+  const pointInRect = (p,r) => p.x>=r.minX && p.x<=r.maxX && p.y>=r.minY && p.y<=r.maxY;
+  // Liang–Barsky: does segment a→b touch rect r?
+  function segHitsRect(ax,ay,bx,by,r){
+    let t0=0,t1=1; const dx=bx-ax, dy=by-ay;
+    const p=[-dx,dx,-dy,dy], q=[ax-r.minX, r.maxX-ax, ay-r.minY, r.maxY-ay];
+    for(let i=0;i<4;i++){
+      if(p[i]===0){ if(q[i]<0) return false; }
+      else { const t=q[i]/p[i]; if(p[i]<0){ if(t>t1) return false; if(t>t0) t0=t; } else { if(t<t0) return false; if(t<t1) t1=t; } }
+    }
+    return t0<=t1;
+  }
+  // split a polyline into contiguous runs of points whose segments touch the clip rect
+  function clipRuns(pts, r){
+    const runs=[]; let run=null; const n=pts.length;
+    for(let i=0;i<n;i++){
+      const a=pts[i];
+      const keep = (i>0 && segHitsRect(pts[i-1].x,pts[i-1].y,a.x,a.y,r))
+                || (i<n-1 && segHitsRect(a.x,a.y,pts[i+1].x,pts[i+1].y,r))
+                || pointInRect(a,r);
+      if(keep){ if(!run){ run=[]; runs.push(run); } run.push(a); }
+      else run=null;
+    }
+    return runs;
   }
 
   function ribbon(pts){
@@ -393,7 +437,7 @@
   }
   function zoomAt(sx, sy, f){
     const before=toWorld(sx,sy);
-    cam.scale = clamp(cam.scale*f, 0.02, 64);
+    cam.scale = clamp(cam.scale*f, MIN_SCALE, MAX_SCALE);
     const after=toWorld(sx,sy);
     cam.x += after.x-before.x; cam.y += after.y-before.y;
     updateHud();
@@ -414,7 +458,7 @@
     const bb = bounds();
     if(!bb){ cam.x=0; cam.y=0; cam.scale=1; updateHud(); invalidate(); saveSoon(); return; }
     const w=bb.maxX-bb.minX, h=bb.maxY-bb.minY;
-    const s = clamp(Math.min(innerWidth/w, innerHeight/h)*0.9, 0.02, 8);
+    const s = clamp(Math.min(innerWidth/w, innerHeight/h)*0.9, MIN_SCALE, 8);
     cam.scale = s;
     cam.x = innerWidth/(2*s) - (bb.minX+w/2);
     cam.y = innerHeight/(2*s) - (bb.minY+h/2);
