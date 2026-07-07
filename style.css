@@ -1,0 +1,96 @@
+:root{
+  --bg:#1b1b1f;
+  --paper:#f6f3ec;
+  --glass:rgba(32,32,38,.72);
+  --glass-brd:rgba(255,255,255,.09);
+  --fg:#e8e8ee;
+  --muted:#9a9aa6;
+  --accent:#7c9cff;
+  --shadow:0 8px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  background:var(--bg);color:var(--fg);touch-action:none;user-select:none}
+
+#paper{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
+body.pan #paper{cursor:grab}
+body.panning #paper{cursor:grabbing}
+
+.glass{
+  background:var(--glass);
+  border:1px solid var(--glass-brd);
+  backdrop-filter:blur(18px) saturate(1.4);
+  -webkit-backdrop-filter:blur(18px) saturate(1.4);
+  box-shadow:var(--shadow);
+  border-radius:16px;
+}
+
+/* Brand */
+#brand{position:fixed;top:14px;left:14px;padding:8px 14px;display:flex;align-items:baseline;gap:8px;z-index:5}
+#brand .jp{font-size:20px;font-weight:600;letter-spacing:2px}
+#brand .romaji{font-size:12px;color:var(--muted);letter-spacing:1px}
+
+/* HUD */
+#hud{position:fixed;top:14px;right:14px;padding:8px 12px;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted);z-index:5}
+
+/* Toolbar */
+#toolbar{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+  display:flex;align-items:center;gap:6px;padding:8px;z-index:6;max-width:calc(100vw - 76px);
+  flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;
+  scroll-snap-type:none;
+}
+#toolbar::-webkit-scrollbar{display:none}
+
+/* Standalone overflow button — always visible bottom-right */
+#menuBtn{
+  position:fixed;right:14px;bottom:18px;width:44px;height:44px;border-radius:14px;
+  display:grid;place-items:center;color:var(--fg);cursor:pointer;z-index:6;
+}
+#menuBtn svg{width:22px;height:22px;fill:currentColor;stroke:none}
+#menuBtn:active{transform:scale(.92)}
+#toolbar button, #toolbar .tool{
+  width:40px;height:40px;border:none;border-radius:11px;background:transparent;color:var(--fg);
+  display:grid;place-items:center;cursor:pointer;transition:background .15s,transform .1s;flex:0 0 auto;
+}
+#toolbar button:hover{background:rgba(255,255,255,.08)}
+#toolbar button:active{transform:scale(.92)}
+#toolbar .tool.active{background:var(--accent);color:#0e1330}
+#toolbar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+.sep{width:1px;height:26px;background:var(--glass-brd);flex:0 0 auto;margin:0 2px}
+
+/* Swatches */
+#swatches{display:flex;gap:5px;align-items:center}
+.swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .12s;flex:0 0 auto}
+.swatch:hover{transform:scale(1.15)}
+.swatch.active{border-color:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+
+/* Size slider */
+#size{display:flex;align-items:center;padding:0 6px}
+#sizeRange{-webkit-appearance:none;appearance:none;width:88px;height:4px;border-radius:4px;background:var(--muted);outline:none}
+#sizeRange::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--fg);cursor:pointer}
+#sizeRange::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--fg);cursor:pointer}
+
+/* Menu */
+#menu{position:fixed;right:14px;bottom:74px;padding:8px;display:flex;flex-direction:column;gap:2px;z-index:7;min-width:190px}
+#menu button, #menu a{
+  background:transparent;border:none;color:var(--fg);text-align:left;padding:10px 12px;border-radius:10px;
+  font-size:14px;cursor:pointer;text-decoration:none;display:block;transition:background .12s;
+}
+#menu button:hover, #menu a:hover{background:rgba(255,255,255,.08)}
+.hidden{display:none!important}
+
+/* Hint */
+#hint{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);color:var(--muted);font-size:12px;
+  z-index:4;pointer-events:none;transition:opacity .6s;text-align:center;padding:0 12px;white-space:nowrap}
+#hint kbd{background:rgba(255,255,255,.1);border-radius:5px;padding:1px 6px;font-family:inherit;font-size:11px}
+
+@media (max-width:680px){
+  #brand .romaji{display:none}
+  #hint{white-space:normal;bottom:76px}
+  #toolbar{gap:3px;padding:6px}
+  #toolbar button,#toolbar .tool{width:36px;height:36px}
+  #sizeRange{width:60px}
+}
