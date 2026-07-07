@@ -5,7 +5,7 @@
 **A free, infinite-canvas ink app for web, Android & Apple.**
 Draw, sketch and think without edges — then share it in one tap, for free.
 
-[**▶ Open Ensō**](https://techtimerdubai.github.io/enso/)
+[**▶ Open Ensō**](https://techtimerdubai.github.io/Enso/)
 
 </div>
 
@@ -37,7 +37,7 @@ Scroll or pinch to zoom · two fingers or hold `Space` to pan.
 
 ## 📱 Install on your phone
 
-Open the [site](https://techtimerdubai.github.io/enso/) → browser menu → **Add to Home screen**. It launches full-screen and works offline.
+Open the [site](https://techtimerdubai.github.io/Enso/) → browser menu → **Add to Home screen**. It launches full-screen and works offline.
 
 ## 🛠 Tech
 

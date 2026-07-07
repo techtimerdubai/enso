@@ -4,7 +4,7 @@
   "description": "A free infinite-canvas ink app. Sumi-e brush, mandala mode, time-lapse replay, personal ink-seal, and one-tap free sharing. Web, Android & Apple.",
   "start_url": ".",
   "scope": ".",
-  "id": "/enso/",
+  "id": "/Enso/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
