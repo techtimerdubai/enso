@@ -26,18 +26,6 @@
     <span class="name"><b>Ensō</b><i lang="ja">円相</i></span>
   </div>
 
-  <!-- Top-right bar: history · view · clear -->
-  <div id="rail" class="glass chrome" role="toolbar" aria-label="History and view">
-    <button id="undo" class="rbtn" aria-label="Undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-1"/></svg></button>
-    <button id="redo" class="rbtn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"/></svg></button>
-    <span class="sep" aria-hidden="true"></span>
-    <button id="zenBtn" class="rbtn" aria-label="Zen mode — hide interface" title="Zen mode — hide everything (Z)">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>
-    </button>
-    <button id="hud" class="rhud" aria-label="Zoom level. Activate to fit drawing to screen." title="Zoom — click to fit (0)">100%</button>
-    <span class="sep" aria-hidden="true"></span>
-    <button id="clearBtn" class="rbtn rail-clear" aria-label="Clear canvas" title="Clear canvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M7 7l1 12h8l1-12"/></svg></button>
-  </div>
 
   <!-- Radial bloom tool dock (bottom-right) -->
   <div id="bloom" class="chrome">
@@ -66,10 +54,17 @@
     </button>
   </div>
 
-  <!-- Menu launcher (floating, bottom-left) -->
-  <button id="menuBtn" class="glass chrome" aria-label="More actions" aria-haspopup="true" aria-expanded="false" title="Menu">
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>
-  </button>
+  <!-- Bottom-centre bar: menu · undo · redo · clear -->
+  <div id="dock" class="glass chrome" role="toolbar" aria-label="Menu, history and clear">
+    <button id="menuBtn" class="rbtn" aria-label="More actions" aria-haspopup="true" aria-expanded="false" title="Menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>
+    </button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="undo" class="rbtn" aria-label="Undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-1"/></svg></button>
+    <button id="redo" class="rbtn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"/></svg></button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="clearBtn" class="rbtn rail-clear" aria-label="Clear canvas" title="Clear canvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M7 7l1 12h8l1-12"/></svg></button>
+  </div>
 
   <!-- Collapsible colour palette (right side) -->
   <button id="paletteTab" class="glass chrome" aria-label="Show or hide colours" aria-expanded="true" title="Colours">

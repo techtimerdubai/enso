@@ -924,11 +924,11 @@
   symBtn.addEventListener('click',()=>{ state.sym=!state.sym; symBtn.classList.toggle('on',state.sym); symBtn.setAttribute('aria-pressed',state.sym?'true':'false');
     toast(state.sym?`✨ Mandala on · ${state.axes} axes`:'Mandala off'); buzz(6); requestRender(); });
 
-  document.getElementById('zenBtn').addEventListener('click', ()=>toggleZen());
+  const zenBtn=document.getElementById('zenBtn'); if(zenBtn) zenBtn.addEventListener('click', ()=>toggleZen());
   function toggleZen(force){ const on = force!==undefined ? force : !document.body.classList.contains('zen');
     document.body.classList.toggle('zen', on); if(on) pushGuard(); }
 
-  document.getElementById('hud').addEventListener('click', ()=>{ zoomToFit(); });
+  { const h=document.getElementById('hud'); if(h) h.addEventListener('click', ()=>{ zoomToFit(); }); }
   function clearAll(){ if(confirm('Clear the whole canvas? This cannot be undone.')){
     strokes=[]; undoStack=[]; redoStack=[]; selection.clear(); updateSelBar();
     layers=[{id:1,name:'Layer 1',visible:true,opacity:1}]; activeLayer=1; nextLayerId=2;
@@ -1199,7 +1199,7 @@
   function downloadBlob(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }
   function stamp(){ const d=new Date(), p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; }
   const hud=document.getElementById('hud');
-  function updateHud(){ hud.textContent = cam.scale>=1 ? Math.round(cam.scale*100)+'%' : (cam.scale*100).toFixed(cam.scale<0.1?1:0)+'%'; }
+  function updateHud(){ if(hud) hud.textContent = cam.scale>=1 ? Math.round(cam.scale*100)+'%' : (cam.scale*100).toFixed(cam.scale<0.1?1:0)+'%'; }
   let toastT; function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.remove('hidden'); t.style.opacity='1';
     clearTimeout(toastT); toastT=setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.classList.add('hidden'),300); }, 1900); }
   let hintT=setTimeout(hideHint,6500); function hideHint(){ const h=document.getElementById('hint'); if(h) h.style.opacity='0'; clearTimeout(hintT); }
