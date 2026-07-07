@@ -929,6 +929,11 @@
     document.body.classList.toggle('zen', on); if(on) pushGuard(); }
 
   document.getElementById('hud').addEventListener('click', ()=>{ zoomToFit(); });
+  function clearAll(){ if(confirm('Clear the whole canvas? This cannot be undone.')){
+    strokes=[]; undoStack=[]; redoStack=[]; selection.clear(); updateSelBar();
+    layers=[{id:1,name:'Layer 1',visible:true,opacity:1}]; activeLayer=1; nextLayerId=2;
+    gridRebuild(); invalidate(); save(); buzz(12); toast('Fresh paper ✨'); } }
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
 
   /* ---------------- sheet menu ---------------- */
   const sheet=document.getElementById('sheet'), menuBtn=document.getElementById('menuBtn');
@@ -955,9 +960,7 @@
     else if(a==='install') doInstall();
     else if(a==='layers') openLayers();
     else if(a==='donate') openDonate();
-    else if(a==='clear'){ if(confirm('Clear the whole canvas? This cannot be undone.')){ strokes=[];undoStack=[];redoStack=[];selection.clear();updateSelBar();
-      layers=[{id:1,name:'Layer 1',visible:true,opacity:1}]; activeLayer=1; nextLayerId=2;
-      gridRebuild();invalidate();save(); toast('Fresh paper ✨'); } }
+    else if(a==='clear') clearAll();
   }));
   const axesLabel=document.getElementById('axesLabel');
   function cycleAxes(){ const opts=[2,3,4,6,8,12]; state.axes=opts[(opts.indexOf(state.axes)+1)%opts.length];
