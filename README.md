@@ -1,5 +1,7 @@
 <div align="center">
 
+<a href="https://techtimerdubai.github.io/Enso/"><img src="icons/og-image.png" alt="Ensō — an endless magic drawing page" width="720"></a>
+
 # Ensō 円相 ✨
 ### an endless magic drawing page
 
@@ -84,10 +86,12 @@ python -m http.server 8080   # then open http://localhost:8080
 
 ## 📄 License
 
-MIT — do anything you like with it. Not affiliated with any other app.
+**MIT** — do anything you like with it. Not affiliated with any other app.
+
+Made with love. Now go fill the endless page! 🎨✨
 
 <div align="center">
 
-**Made with love. Now go fill the endless page! 🎨✨**
+**Ideas by Aayansh 🌟 · Built by Papa 💛**
 
 </div>
