@@ -349,7 +349,10 @@
     const w = toWorld(e.clientX, e.clientY);
     const col = state.rainbow ? nextRainbow() : state.color;
     live = { tool:state.tool, color:col, size:state.size, layer:activeLayer, pts:[], _t:performance.now() };
-    addPoint(live, w.x, w.y, pressure(e), 0);
+    live._fx = makeOneEuro(1.7, 0.02); live._fy = makeOneEuro(1.7, 0.02);
+    const t0 = e.timeStamp || performance.now();
+    const fw = toWorld(live._fx(e.clientX, t0), live._fy(e.clientY, t0));
+    addPoint(live, fw.x, fw.y, pressure(e), 0);
     hideHint(); requestRender();
   });
 
@@ -368,9 +371,10 @@
       const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
       const now = performance.now();
       for(const ev of (evs.length?evs:[e])){
-        const w = toWorld(ev.clientX, ev.clientY);
+        const t = ev.timeStamp || now;
+        const w = toWorld(live._fx(ev.clientX, t), live._fy(ev.clientY, t));   // smoothed, screen-space
         const last = live.pts[live.pts.length-1];
-        if(last && Math.hypot(w.x-last.x, w.y-last.y)*cam.scale < 0.7) continue;
+        if(last && Math.hypot(w.x-last.x, w.y-last.y)*cam.scale < 0.6) continue;
         addPoint(live, w.x, w.y, pressure(ev), now-live._t);
       }
       requestRender();
@@ -407,6 +411,19 @@
     return 0.5;
   }
 
+  // One-Euro filter (Casiez et al.) — adaptive low-pass: heavy smoothing when the
+  // pointer moves slowly (kills jitter), light when fast (no lag). Run in SCREEN space.
+  function makeOneEuro(minCutoff, beta){
+    let xp=null, dxp=0, tp=null;
+    const alpha=(cut,dt)=>{ const tau=1/(2*Math.PI*cut); return 1/(1+tau/dt); };
+    return (x, t)=>{
+      if(xp===null){ xp=x; tp=t; return x; }
+      let dt=(t-tp)/1000; if(dt<=0) dt=1/120; tp=t;
+      const dx=(x-xp)/dt, aD=alpha(1.0,dt), dxh=aD*dx+(1-aD)*dxp; dxp=dxh;
+      const cut=minCutoff+beta*Math.abs(dxh), a=alpha(cut,dt); xp=a*x+(1-a)*xp; return xp;
+    };
+  }
+
   function addPoint(s, x, y, p, t){
     const pts=s.pts, base=s.size, st=STYLES[s.tool]; let w;
     const last = pts[pts.length-1];
@@ -417,7 +434,9 @@
       w = base * (0.2 + 0.95*Math.abs(Math.sin(ang - Math.PI/4)));   // thick across the 45° nib
     } else {
       let speedF = 1;
-      if(last && st.ws){ const dt=Math.max(1,t-(last._t||0)); const v=Math.hypot(x-last.x,y-last.y)/dt; speedF=clamp(1-v*st.ws,0.35,1); }
+      // velocity in SCREEN space (world distance × zoom) so brush dynamics feel
+      // identical at every zoom level — the fix for "brush wrong at max zoom".
+      if(last && st.ws){ const dt=Math.max(1,t-(last._t||0)); const v=Math.hypot(x-last.x,y-last.y)*cam.scale/dt; speedF=clamp(1-v*st.ws,0.35,1); }
       w = base * (st.wp + (1-st.wp)*p) * speedF;
     }
     if(st && st.jitter) w *= (1 - st.jitter*0.5 + st.jitter*Math.random());
@@ -433,6 +452,7 @@
       for(let i=0;i<k && i<n;i++){ const f=0.35+0.65*(i/k); s.pts[n-1-i].w *= f; }
     }
     for(const p of s.pts) delete p._t;
+    delete s._fx; delete s._fy;
     finalizeBB(s);
   }
   function finalizeBB(s){
@@ -511,6 +531,7 @@
     if(op.type==='add')    forward ? addItems(op.items)    : removeItems(op.items);
     else if(op.type==='delete') forward ? removeItems(op.items) : addItems(op.items);
     else if(op.type==='move')   translateItems(op.items, forward?op.dx:-op.dx, forward?op.dy:-op.dy);
+    else if(op.type==='transform') applyMatrixToItems(op.items, forward?op.m:matInv(op.m));
   }
   function undo(){ if(!undoStack.length) return; const op=undoStack.pop(); applyOp(op,false); redoStack.push(op); updateSelBar(); invalidate(); saveSoon(); }
   function redo(){ if(!redoStack.length) return; const op=redoStack.pop(); applyOp(op,true); undoStack.push(op); updateSelBar(); invalidate(); saveSoon(); }
@@ -528,16 +549,63 @@
     for(const s of cand){ if(s.bb && !(s.bb.maxX<r.minX||s.bb.minX>r.maxX||s.bb.maxY<r.minY||s.bb.minY>r.maxY)) out.add(s); }
     return out;
   }
+  /* affine matrices {a,b,c,d,e,f}: x'=a·x+c·y+e, y'=b·x+d·y+f */
+  const matMul=(A,B)=>({ a:A.a*B.a+A.c*B.b, b:A.b*B.a+A.d*B.b, c:A.a*B.c+A.c*B.d, d:A.b*B.c+A.d*B.d, e:A.a*B.e+A.c*B.f+A.e, f:A.b*B.e+A.d*B.f+A.f });
+  const matTrans=(x,y)=>({a:1,b:0,c:0,d:1,e:x,f:y});
+  const matScl=k=>({a:k,b:0,c:0,d:k,e:0,f:0});
+  const matRot=r=>({a:Math.cos(r),b:Math.sin(r),c:-Math.sin(r),d:Math.cos(r),e:0,f:0});
+  const matInv=m=>{ const det=m.a*m.d-m.b*m.c, id=1/det; return { a:m.d*id, b:-m.b*id, c:-m.c*id, d:m.a*id, e:(m.c*m.f-m.d*m.e)*id, f:(m.b*m.e-m.a*m.f)*id }; };
+  const scaleAround=(px,py,k)=>matMul(matTrans(px,py), matMul(matScl(k), matTrans(-px,-py)));
+  const rotAround=(px,py,r)=>matMul(matTrans(px,py), matMul(matRot(r), matTrans(-px,-py)));
+  const matScaleOf=m=>Math.sqrt(Math.abs(m.a*m.d-m.b*m.c));
+  function xformOne(s, apply){
+    gridRemove(s);
+    if(s.tool==='stamp'){ const r=apply(s.x,s.y); s.x=r.x; s.y=r.y; s.size=Math.max(2, s.size*r.sc);
+      s.bb={minX:s.x-s.size/2,minY:s.y-s.size/2,maxX:s.x+s.size/2,maxY:s.y+s.size/2}; }
+    else { for(const p of s.pts){ const r=apply(p.x,p.y); p.x=r.x; p.y=r.y; p.w*=r.sc; } finalizeBB(s); }
+    gridAdd(s);
+  }
+  function applyMatrixToItems(items, m){ const sc=matScaleOf(m);
+    for(const s of items) xformOne(s, (x,y)=>({ x:m.a*x+m.c*y+m.e, y:m.b*x+m.d*y+m.f, sc })); }
+  function snapshotSelection(){ return [...selection].map(s=>({ item:s, x:s.x, y:s.y, size:s.size, pts: s.pts?s.pts.map(p=>({x:p.x,y:p.y,w:p.w})):null })); }
+  function applySnapshot(list, m){ const sc=matScaleOf(m);
+    for(const snap of list){ const s=snap.item; gridRemove(s);
+      if(s.tool==='stamp'){ s.x=m.a*snap.x+m.c*snap.y+m.e; s.y=m.b*snap.x+m.d*snap.y+m.f; s.size=Math.max(2, snap.size*sc);
+        s.bb={minX:s.x-s.size/2,minY:s.y-s.size/2,maxX:s.x+s.size/2,maxY:s.y+s.size/2}; }
+      else { for(let i=0;i<snap.pts.length;i++){ const o=snap.pts[i], p=s.pts[i]; p.x=m.a*o.x+m.c*o.y+m.e; p.y=m.b*o.x+m.d*o.y+m.f; p.w=o.w*sc; } finalizeBB(s); }
+      gridAdd(s); }
+  }
+  // screen-space handle positions for the current selection
+  function selHandles(){
+    const bb=selectionBBox(); if(!bb) return null;
+    const p0=worldToScreen(bb.minX,bb.minY), p1=worldToScreen(bb.maxX,bb.maxY), pad=4;
+    const L=p0.x-pad, T=p0.y-pad, Rr=p1.x+pad, B=p1.y+pad;
+    return { bb, L, T, R:Rr, B, corners:[[L,T],[Rr,T],[L,B],[Rr,B]], rot:[(L+Rr)/2, T-28], cx:(bb.minX+bb.maxX)/2, cy:(bb.minY+bb.maxY)/2 };
+  }
   function startSelect(sx,sy){
-    const w=toWorld(sx,sy), bb=selectionBBox();
-    if(selection.size && bb && w.x>=bb.minX && w.x<=bb.maxX && w.y>=bb.minY && w.y<=bb.maxY) sel={ mode:'move', lastX:sx, lastY:sy, dx:0, dy:0 };
-    else sel={ mode:'marquee', x0:sx, y0:sy, x1:sx, y1:sy };
+    if(selection.size){
+      const h=selHandles(); const near=(hx,hy)=>Math.hypot(sx-hx,sy-hy)<18;
+      if(h){
+        if(near(h.rot[0],h.rot[1])){ const w=toWorld(sx,sy); sel={mode:'rotate', px:h.cx, py:h.cy, startAng:Math.atan2(w.y-h.cy,w.x-h.cx), orig:snapshotSelection(), m:null}; return; }
+        for(let i=0;i<4;i++){ if(near(h.corners[i][0],h.corners[i][1])){
+          const opp=h.corners[3-i]; const piv=toWorld(opp[0],opp[1]), st=toWorld(sx,sy);
+          sel={mode:'scale', px:piv.x, py:piv.y, startDist:Math.max(1e-4,Math.hypot(st.x-piv.x,st.y-piv.y)), orig:snapshotSelection(), m:null}; return; }}
+        const w=toWorld(sx,sy);
+        if(w.x>=h.bb.minX && w.x<=h.bb.maxX && w.y>=h.bb.minY && w.y<=h.bb.maxY){ sel={mode:'move', lastX:sx, lastY:sy, dx:0, dy:0}; return; }
+      }
+    }
+    sel={ mode:'marquee', x0:sx, y0:sy, x1:sx, y1:sy };
   }
   function moveSelect(sx,sy){
     if(!sel) return;
-    if(sel.mode==='marquee'){ sel.x1=sx; sel.y1=sy; requestRender(); }
-    else { const dxw=(sx-sel.lastX)/cam.scale, dyw=(sy-sel.lastY)/cam.scale;
-      translateItems([...selection], dxw, dyw); sel.dx+=dxw; sel.dy+=dyw; sel.lastX=sx; sel.lastY=sy; invalidate(); }
+    if(sel.mode==='marquee'){ sel.x1=sx; sel.y1=sy; requestRender(); return; }
+    if(sel.mode==='move'){ const dxw=(sx-sel.lastX)/cam.scale, dyw=(sy-sel.lastY)/cam.scale;
+      translateItems([...selection], dxw, dyw); sel.dx+=dxw; sel.dy+=dyw; sel.lastX=sx; sel.lastY=sy; invalidate(); return; }
+    const w=toWorld(sx,sy);
+    if(sel.mode==='scale'){ let k=Math.hypot(w.x-sel.px,w.y-sel.py)/sel.startDist; k=clamp(k,0.05,40);
+      sel.m=scaleAround(sel.px,sel.py,k); applySnapshot(sel.orig, sel.m); invalidate(); }
+    else if(sel.mode==='rotate'){ const d=Math.atan2(w.y-sel.py,w.x-sel.px)-sel.startAng;
+      sel.m=rotAround(sel.px,sel.py,d); applySnapshot(sel.orig, sel.m); invalidate(); }
   }
   function endSelect(){
     if(!sel) return;
@@ -546,7 +614,8 @@
       if(Math.hypot(sel.x1-sel.x0, sel.y1-sel.y0) < 5) selection.clear();
       else selection = selectInRect({minX:Math.min(a.x,b.x),minY:Math.min(a.y,b.y),maxX:Math.max(a.x,b.x),maxY:Math.max(a.y,b.y)});
       updateSelBar(); requestRender();
-    } else if(Math.hypot(sel.dx*cam.scale, sel.dy*cam.scale) > 1){ pushOp({type:'move', items:[...selection], dx:sel.dx, dy:sel.dy}); saveSoon(); }
+    } else if(sel.mode==='move'){ if(Math.hypot(sel.dx*cam.scale, sel.dy*cam.scale) > 1){ pushOp({type:'move', items:[...selection], dx:sel.dx, dy:sel.dy}); saveSoon(); } }
+    else if(sel.m){ pushOp({type:'transform', items:sel.orig.map(o=>o.item), m:sel.m}); saveSoon(); }
     sel=null;
   }
   function clearSelection(){ if(selection.size){ selection.clear(); updateSelBar(); requestRender(); } }
@@ -570,11 +639,17 @@
       ctx.fillStyle='rgba(143,178,255,.12)'; ctx.fillRect(x,y,w,h);
       ctx.strokeStyle='rgba(143,178,255,.95)'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
     }
-    const bb=selectionBBox();
-    if(bb){ const p0=worldToScreen(bb.minX,bb.minY), p1=worldToScreen(bb.maxX,bb.maxY);
+    const h=selHandles();
+    if(h){
       ctx.strokeStyle='#e0503a'; ctx.lineWidth=2; ctx.setLineDash([7,5]);
-      ctx.strokeRect(p0.x-3,p0.y-3,(p1.x-p0.x)+6,(p1.y-p0.y)+6); ctx.setLineDash([]);
-      ctx.fillStyle='#e0503a'; for(const [hx,hy] of [[p0.x-3,p0.y-3],[p1.x+3,p0.y-3],[p0.x-3,p1.y+3],[p1.x+3,p1.y+3]]){ ctx.beginPath(); ctx.arc(hx,hy,4.5,0,7); ctx.fill(); }
+      ctx.strokeRect(h.L,h.T,h.R-h.L,h.B-h.T); ctx.setLineDash([]);
+      // rotate handle stem + knob
+      ctx.beginPath(); ctx.moveTo((h.L+h.R)/2,h.T); ctx.lineTo(h.rot[0],h.rot[1]); ctx.stroke();
+      ctx.fillStyle='#e0503a'; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(h.rot[0],h.rot[1],7,0,7); ctx.fill(); ctx.stroke();
+      // scale corners (white-filled squares)
+      ctx.fillStyle='#fff'; ctx.strokeStyle='#e0503a'; ctx.lineWidth=2;
+      for(const [hx,hy] of h.corners){ ctx.beginPath(); ctx.rect(hx-5,hy-5,10,10); ctx.fill(); ctx.stroke(); }
     }
     ctx.restore();
   }
@@ -698,6 +773,13 @@
   const isEyedrop = () => eyedropMode;
   const doSample = (x,y)=>{ sampleColorAt(x,y); eyedropMode=false; document.body.classList.remove('eyedrop'); };
 
+  // collapsible right-side palette
+  const paletteTab=document.getElementById('paletteTab'), paletteDot=paletteTab.querySelector('.pt-dot');
+  let palOpen = localStorage.getItem('enso.palOpen')!=='0';
+  function setPalette(open){ palOpen=open; document.body.classList.toggle('pal-open', open); paletteTab.setAttribute('aria-expanded', open?'true':'false'); try{ localStorage.setItem('enso.palOpen', open?'1':'0'); }catch(e){} }
+  paletteTab.addEventListener('click', ()=>{ setPalette(!palOpen); buzz(6); });
+  setPalette(palOpen);
+
   const brushBtn = document.getElementById('brushBtn'), brushDot = brushBtn.querySelector('.brush-dot');
   document.querySelectorAll('.tool[data-tool]').forEach(b=>b.addEventListener('click',()=>{ selectTool(b.dataset.tool); buzz(6); }));
   function selectTool(tool){ state.tool=tool; clearPendingStamp();
@@ -711,8 +793,9 @@
     if(tool!=='select'){ selection.clear(); sel=null; }
     updateSelBar(); updateBrushDot(); requestRender();
   }
-  function updateBrushDot(){ brushDot.style.background = state.rainbow
-    ? 'conic-gradient(from 0deg,#ff4d4f,#ffd21a,#37c86b,#20b8e6,#9a5bff,#ff4d4f)' : state.color; }
+  function updateBrushDot(){ const bg = state.rainbow
+    ? 'conic-gradient(from 0deg,#ff4d4f,#ffd21a,#37c86b,#20b8e6,#9a5bff,#ff4d4f)' : state.color;
+    brushDot.style.background = bg; if(paletteDot) paletteDot.style.background = bg; }
 
   // brush style picker
   const brushModal=document.getElementById('brushModal'), brushGrid=document.getElementById('brushGrid');

@@ -71,6 +71,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-vis
 #symBtn.on{background:var(--accent)!important;color:#fff}
 .sep{width:1px;height:26px;background:var(--brd);flex:0 0 auto;margin:0 3px}
 
+/* Collapsible colour palette (right side) */
+#paletteTab{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);
+  z-index:7;width:40px;height:56px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;padding:0;color:var(--fg)}
+#paletteTab .pt-dot{width:20px;height:20px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px rgba(0,0,0,.3)}
+#paletteTab .pt-chev{width:16px;height:16px;fill:none;stroke:var(--muted);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .25s}
+body.pal-open #paletteTab .pt-chev{transform:rotate(180deg)}
+#paletteBody{position:fixed;right:58px;top:50%;transform:translateY(-50%);z-index:7;padding:12px;
+  width:150px;max-height:min(76dvh,560px);overflow-y:auto;transition:opacity .25s ease, transform .25s ease}
+body:not(.pal-open) #paletteBody{opacity:0;transform:translateY(-50%) translateX(24px) scale(.96);pointer-events:none}
+#paletteBody #swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;justify-items:center;align-items:center}
+
 /* Swatches */
 #swatches{display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap}
 .swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .12s;

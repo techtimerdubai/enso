@@ -63,10 +63,18 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>
       </button>
     </div>
-    <div class="row colors"><div id="swatches" role="group" aria-label="Colour"></div></div>
     <div class="row size">
       <label id="size"><span class="sr-only">Brush size</span><input type="range" min="1" max="60" value="8" id="sizeRange" aria-label="Brush size" /></label>
     </div>
+  </div>
+
+  <!-- Collapsible colour palette (right side) -->
+  <button id="paletteTab" class="glass chrome" aria-label="Show or hide colours" aria-expanded="true" title="Colours">
+    <span class="pt-dot" aria-hidden="true"></span>
+    <svg class="pt-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+  <div id="paletteBody" class="glass chrome" role="group" aria-label="Colours">
+    <div id="swatches"></div>
   </div>
 
   <!-- Slide-up sheet -->
