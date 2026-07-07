@@ -38,6 +38,7 @@
     sym: false,
     axes: 6,
     rainbow: false,
+    shapeSnap: false,        // auto-clean hand-drawn shapes
     pendingStamp: null,      // {dataURL, img, size} awaiting placement
   };
   let rainbowHue = 0;
@@ -73,23 +74,27 @@
   let quotaWarned = false;
   const save = () => { try {
     localStorage.setItem(KEY, JSON.stringify({ strokes: serialize(strokes), cam, layers, activeLayer, nextLayerId,
-      state:{ theme:state.theme, grid:state.grid, axes:state.axes } }));
+      state:{ theme:state.theme, grid:state.grid, axes:state.axes, shape:state.shapeSnap } }));
   } catch(e){ if(!quotaWarned){ quotaWarned = true; toast('Storage full — older work may not auto-save. Export to keep it.'); } } };
   const saveSoon = debounce(save, 400);
   function serialize(list){ return list.map(s => s.tool==='stamp'
     ? { tool:'stamp', dataURL:s.dataURL, x:r2(s.x), y:r2(s.y), size:r2(s.size), layer:s.layer }
     : { tool:s.tool, color:s.color, size:s.size, layer:s.layer, pts:s.pts.map(p=>[r2(p.x),r2(p.y),r2(p.w)]) }); }
-  function load(){ try {
-    const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if(!d) return;
+  function applyDoc(d){
+    if(!d) return;
+    strokes=[]; undoStack=[]; redoStack=[]; selection.clear();
+    layers=[{id:1,name:'Layer 1',visible:true,opacity:1}]; activeLayer=1; nextLayerId=2;
     if(d.cam) Object.assign(cam, d.cam);
-    if(d.state){ state.theme=d.state.theme||state.theme; state.grid=d.state.grid!==false; state.axes=d.state.axes||6; }
+    if(d.state){ state.theme=d.state.theme||state.theme; state.grid=d.state.grid!==false; state.axes=d.state.axes||6; state.shapeSnap=!!d.state.shape; }
     if(Array.isArray(d.layers) && d.layers.length){ layers=d.layers; activeLayer=d.activeLayer||layers[0].id; nextLayerId=d.nextLayerId||(Math.max(...layers.map(l=>l.id))+1); }
     if(Array.isArray(d.strokes)) for(const s of d.strokes){
       if(s.tool==='stamp'){ const st=makeStamp(s.dataURL, s.x, s.y, s.size); st.layer=s.layer||layers[0].id; strokes.push(st); }
       else { const st={ tool:s.tool, color:s.color, size:s.size, layer:s.layer||layers[0].id, pts:s.pts.map(p=>({x:p[0],y:p[1],w:p[2]})) };
         finalizeBB(st); strokes.push(st); }
     }
-  } catch(e){} }
+    gridRebuild();
+  }
+  function load(){ try { applyDoc(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch(e){} }
 
   /* ---------------- sizing (crisp on every device) ---------------- */
   function resize(){
@@ -389,7 +394,14 @@
 
     if(sel){ endSelect(); }
     if(drawingId===e.pointerId){
-      if(live && live.pts.length){ finalizeStroke(live); commit(state.sym ? [live, ...symCopies(live)] : [live]); }
+      if(live && live.pts.length){
+        finalizeStroke(live);
+        if(state.shapeSnap && isDrawStyle(live.tool) && live.tool!=='marker'){
+          const shaped=recognizeShape(live);
+          if(shaped){ live.pts=shaped.pts; finalizeBB(live); buzz(10); toast('✦ Snapped to '+shaped.kind); }
+        }
+        commit(state.sym ? [live, ...symCopies(live)] : [live]);
+      }
       live=null; drawingId=null; requestRender();
     }
     if(panLast){ panLast=null; document.body.classList.remove('panning'); startInertia(); saveSoon(); }
@@ -459,6 +471,50 @@
     let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity,mw=0;
     for(const p of s.pts){ a=Math.min(a,p.x);b=Math.min(b,p.y);c=Math.max(c,p.x);d=Math.max(d,p.y);mw=Math.max(mw,p.w); }
     s.bb={minX:a-mw,minY:b-mw,maxX:c+mw,maxY:d+mw};
+  }
+
+  /* ---------------- shape recognition (snap hand-drawn shapes) ---------------- */
+  const perpDist=(p,a,b)=>{ const L=Math.hypot(b.x-a.x,b.y-a.y)||1; return Math.abs((b.y-a.y)*p.x-(b.x-a.x)*p.y+b.x*a.y-b.y*a.x)/L; };
+  function rdp(pts, eps){ if(pts.length<3) return pts.slice(); let dmax=0, idx=0; const a=pts[0], b=pts[pts.length-1];
+    for(let i=1;i<pts.length-1;i++){ const dd=perpDist(pts[i],a,b); if(dd>dmax){ dmax=dd; idx=i; } }
+    if(dmax>eps){ const l=rdp(pts.slice(0,idx+1),eps), r=rdp(pts.slice(idx),eps); return l.slice(0,-1).concat(r); }
+    return [a,b]; }
+  function recognizeShape(s){
+    const P=s.pts; if(!P || P.length<8) return null;
+    let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity; for(const p of P){ a=Math.min(a,p.x);b=Math.min(b,p.y);c=Math.max(c,p.x);d=Math.max(d,p.y); }
+    const W=c-a, H=d-b, size=Math.hypot(W,H); if(size<14) return null;
+    const w=P.reduce((t,p)=>t+p.w,0)/P.length, mk=(x,y)=>({x,y,w});
+    let plen=0; for(let i=1;i<P.length;i++) plen+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);
+    const closed=Math.hypot(P[0].x-P[P.length-1].x,P[0].y-P[P.length-1].y) < 0.22*plen;
+    if(!closed){
+      const A=P[0], B=P[P.length-1], L=Math.hypot(B.x-A.x,B.y-A.y)||1; let dev=0;
+      for(const p of P) dev=Math.max(dev, perpDist(p,A,B));
+      if(dev < 0.06*L && L>15) return { kind:'line', pts:[mk(A.x,A.y),mk((A.x+B.x)/2,(A.y+B.y)/2),mk(B.x,B.y)] };
+      return null;
+    }
+    const cx=P.reduce((t,p)=>t+p.x,0)/P.length, cy=P.reduce((t,p)=>t+p.y,0)/P.length;
+    const rs=P.map(p=>Math.hypot(p.x-cx,p.y-cy)); const mr=rs.reduce((t,r)=>t+r,0)/rs.length;
+    let vr=0; for(const r of rs) vr+=(r-mr)*(r-mr); vr=Math.sqrt(vr/rs.length);
+    if(mr>7 && vr/mr < 0.17){
+      const rx=W/2, ry=H/2, ex=(a+c)/2, ey=(b+d)/2, N=64, out=[];
+      for(let i=0;i<=N;i++){ const t=i/N*2*Math.PI; out.push(mk(ex+rx*Math.cos(t), ey+ry*Math.sin(t))); }
+      return { kind: Math.abs(rx-ry)<0.18*Math.max(rx,ry) ? 'circle':'ellipse', pts:out };
+    }
+    let cor=rdp(P.map(p=>({x:p.x,y:p.y})), 0.05*size);
+    if(cor.length>1 && Math.hypot(cor[0].x-cor[cor.length-1].x, cor[0].y-cor[cor.length-1].y) < 0.06*size) cor=cor.slice(0,-1);
+    const nc=cor.length;
+    // fill ratio (shoelace area / bbox area): rectangles ≈1, triangles ≈0.5
+    let area=0; for(let i=0,j=P.length-1;i<P.length;j=i++) area += (P[j].x+P[i].x)*(P[j].y-P[i].y);
+    const fill=Math.abs(area/2)/((W*H)||1);
+    if(fill>0.72 && nc>=4 && nc<=8) return { kind:'rectangle', pts:[mk(a,b),mk(c,b),mk(c,d),mk(a,d),mk(a,b)] };
+    if(fill>=0.33 && fill<=0.68 && nc>=3){          // triangle — pick the 3 corners forming the largest triangle
+      let best=null, bestA=0;
+      for(let i=0;i<nc;i++) for(let j=i+1;j<nc;j++) for(let k=j+1;k<nc;k++){
+        const A=Math.abs((cor[j].x-cor[i].x)*(cor[k].y-cor[i].y)-(cor[k].x-cor[i].x)*(cor[j].y-cor[i].y))/2;
+        if(A>bestA){ bestA=A; best=[cor[i],cor[j],cor[k]]; } }
+      if(best) return { kind:'triangle', pts:[...best.map(p=>mk(p.x,p.y)), mk(best[0].x,best[0].y)] };
+    }
+    return null;
   }
 
   function nextRainbow(){ rainbowHue = (rainbowHue + 47) % 360; return `hsl(${rainbowHue} 85% 55%)`; }
@@ -594,11 +650,25 @@
         if(w.x>=h.bb.minX && w.x<=h.bb.maxX && w.y>=h.bb.minY && w.y<=h.bb.maxY){ sel={mode:'move', lastX:sx, lastY:sy, dx:0, dy:0}; return; }
       }
     }
-    sel={ mode:'marquee', x0:sx, y0:sy, x1:sx, y1:sy };
+    sel={ mode:'lasso', pts:[{x:sx,y:sy}] };
+  }
+  const pointInPoly=(x,y,poly)=>{ let inside=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const xi=poly[i].x,yi=poly[i].y,xj=poly[j].x,yj=poly[j].y;
+    if(((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi)) inside=!inside; } return inside; };
+  function selectInLasso(poly){
+    let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity; for(const p of poly){ a=Math.min(a,p.x);b=Math.min(b,p.y);c=Math.max(c,p.x);d=Math.max(d,p.y); }
+    const cand=selectInRect({minX:a,minY:b,maxX:c,maxY:d}), out=new Set();
+    for(const s of cand){
+      if(s.tool==='stamp'){ if(pointInPoly(s.x,s.y,poly)) out.add(s); continue; }
+      const pts=s.pts, step=Math.max(1,Math.floor(pts.length/24)); let hit=false, cx=0, cy=0, n=0;
+      for(let i=0;i<pts.length;i+=step){ cx+=pts[i].x; cy+=pts[i].y; n++; if(pointInPoly(pts[i].x,pts[i].y,poly)){ hit=true; break; } }
+      if(!hit && n){ if(pointInPoly(cx/n,cy/n,poly)) hit=true; }
+      if(hit) out.add(s);
+    }
+    return out;
   }
   function moveSelect(sx,sy){
     if(!sel) return;
-    if(sel.mode==='marquee'){ sel.x1=sx; sel.y1=sy; requestRender(); return; }
+    if(sel.mode==='lasso'){ const l=sel.pts[sel.pts.length-1]; if(!l||Math.hypot(sx-l.x,sy-l.y)>2){ sel.pts.push({x:sx,y:sy}); requestRender(); } return; }
     if(sel.mode==='move'){ const dxw=(sx-sel.lastX)/cam.scale, dyw=(sy-sel.lastY)/cam.scale;
       translateItems([...selection], dxw, dyw); sel.dx+=dxw; sel.dy+=dyw; sel.lastX=sx; sel.lastY=sy; invalidate(); return; }
     const w=toWorld(sx,sy);
@@ -609,10 +679,10 @@
   }
   function endSelect(){
     if(!sel) return;
-    if(sel.mode==='marquee'){
-      const a=toWorld(sel.x0,sel.y0), b=toWorld(sel.x1,sel.y1);
-      if(Math.hypot(sel.x1-sel.x0, sel.y1-sel.y0) < 5) selection.clear();
-      else selection = selectInRect({minX:Math.min(a.x,b.x),minY:Math.min(a.y,b.y),maxX:Math.max(a.x,b.x),maxY:Math.max(a.y,b.y)});
+    if(sel.mode==='lasso'){
+      const path=sel.pts; let len=0; for(let i=1;i<path.length;i++) len+=Math.hypot(path[i].x-path[i-1].x, path[i].y-path[i-1].y);
+      if(path.length<3 || len<14) selection.clear();
+      else selection = selectInLasso(path.map(p=>toWorld(p.x,p.y)));
       updateSelBar(); requestRender();
     } else if(sel.mode==='move'){ if(Math.hypot(sel.dx*cam.scale, sel.dy*cam.scale) > 1){ pushOp({type:'move', items:[...selection], dx:sel.dx, dy:sel.dy}); saveSoon(); } }
     else if(sel.m){ pushOp({type:'transform', items:sel.orig.map(o=>o.item), m:sel.m}); saveSoon(); }
@@ -634,10 +704,11 @@
   document.getElementById('selNone').addEventListener('click', ()=>{ clearSelection(); });
   function drawSelectionOverlay(){
     ctx.save(); ctx.setTransform(dpr,0,0,dpr,0,0);
-    if(sel && sel.mode==='marquee'){
-      const x=Math.min(sel.x0,sel.x1), y=Math.min(sel.y0,sel.y1), w=Math.abs(sel.x1-sel.x0), h=Math.abs(sel.y1-sel.y0);
-      ctx.fillStyle='rgba(143,178,255,.12)'; ctx.fillRect(x,y,w,h);
-      ctx.strokeStyle='rgba(143,178,255,.95)'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+    if(sel && sel.mode==='lasso' && sel.pts.length>1){
+      const p=sel.pts;
+      ctx.beginPath(); ctx.moveTo(p[0].x,p[0].y); for(let i=1;i<p.length;i++) ctx.lineTo(p[i].x,p[i].y); ctx.closePath();
+      ctx.fillStyle='rgba(143,178,255,.12)'; ctx.fill();
+      ctx.strokeStyle='rgba(143,178,255,.95)'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
     }
     const h=selHandles();
     if(h){
@@ -836,9 +907,12 @@
     else if(a==='fit') zoomToFit();
     else if(a==='theme'){ state.theme=state.theme==='dark'?'light':'dark'; invalidate(); saveSoon(); }
     else if(a==='grid'){ state.grid=!state.grid; invalidate(); saveSoon(); }
+    else if(a==='shapesnap'){ state.shapeSnap=!state.shapeSnap; toast(state.shapeSnap?'✦ Shape snap ON — draw a circle, box, line…':'Shape snap off'); saveSoon(); }
     else if(a==='symaxes') cycleAxes();
     else if(a==='png') exportPNG();
     else if(a==='svg') exportSVG();
+    else if(a==='savefile') exportDoc();
+    else if(a==='openfile') importDoc();
     else if(a==='share') shareImage();
     else if(a==='replay') startReplay();
     else if(a==='seal') openSeal();
@@ -989,6 +1063,18 @@
     o.drawImage(ink,0,0); return out;
   }
   function exportPNG(){ const out=renderToCanvas(); if(!out){ toast('Nothing to export yet'); return; } out.toBlob(b=>downloadBlob(b,'enso-'+stamp()+'.png'),'image/png'); }
+  // save / open an editable Ensō document file (real backup + sharing)
+  function exportDoc(){
+    const data=JSON.stringify({ v:2, strokes:serialize(strokes), cam, layers, activeLayer, nextLayerId, state:{theme:state.theme,grid:state.grid,axes:state.axes} });
+    downloadBlob(new Blob([data],{type:'application/json'}), 'enso-'+stamp()+'.enso.json'); toast('Saved file ✓');
+  }
+  function importDoc(){
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+    inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f) return; const r=new FileReader();
+      r.onload=()=>{ try{ applyDoc(JSON.parse(r.result)); updateSelBar(); updateHud(); invalidate(); save(); toast('Opened ✓'); }catch(e){ toast('Could not open that file'); } };
+      r.readAsText(f); };
+    inp.click();
+  }
   async function shareImage(){
     const out=renderToCanvas(); if(!out){ toast('Draw something first ✍️'); return; }
     out.toBlob(async blob=>{
