@@ -351,6 +351,7 @@
 
   canvas.addEventListener('pointerdown', e => {
     stopInertia(); stopCamAnim();
+    if(document.body.classList.contains('bloom-open')) setBloom(false);
     if(e.pointerType==='pen') penDownCount++;
     // palm rejection — ignore fingers while a stylus is drawing
     if(e.pointerType==='touch' && penDownCount>0) return;
@@ -872,6 +873,20 @@
   setPalette(palOpen);
 
   const brushBtn = document.getElementById('brushBtn'), brushDot = brushBtn.querySelector('.brush-dot');
+
+  // radial bloom dock
+  const bloom=document.getElementById('bloom'), bloomOrb=document.getElementById('bloomOrb'),
+        orbIco=bloomOrb.querySelector('.orb-ico'), orbDot=bloomOrb.querySelector('.orb-dot');
+  document.querySelectorAll('.petal').forEach(p=>{ if(p.dataset.c) p.style.background=p.dataset.c;
+    if(p.dataset.r) p.style.right=p.dataset.r+'px'; if(p.dataset.b) p.style.bottom=p.dataset.b+'px'; });
+  function setBloom(open){ document.body.classList.toggle('bloom-open', open); bloomOrb.setAttribute('aria-expanded', open?'true':'false'); }
+  bloomOrb.addEventListener('click', e=>{ e.stopPropagation(); setBloom(!document.body.classList.contains('bloom-open')); buzz(6); });
+  document.addEventListener('click', e=>{ if(document.body.classList.contains('bloom-open') && !bloom.contains(e.target)) setBloom(false); });
+  function updateOrb(){
+    const el = isDrawStyle(state.tool) ? brushBtn : document.querySelector('.petal[data-tool="'+state.tool+'"]');
+    if(el){ const svg=el.querySelector('svg'); if(svg) orbIco.innerHTML = svg.outerHTML; }
+    orbDot.style.background = state.rainbow ? '#e0503a' : state.color;
+  }
   document.querySelectorAll('.tool[data-tool]').forEach(b=>b.addEventListener('click',()=>{ selectTool(b.dataset.tool); buzz(6); }));
   function selectTool(tool){ state.tool=tool; clearPendingStamp();
     if(isDrawStyle(tool)) lastBrushStyle = tool;
@@ -882,11 +897,11 @@
     document.body.classList.toggle('erase', tool==='eraser');
     document.body.classList.toggle('select', tool==='select');
     if(tool!=='select'){ selection.clear(); sel=null; }
-    updateSelBar(); updateBrushDot(); requestRender();
+    updateSelBar(); updateBrushDot(); updateOrb(); requestRender();
   }
   function updateBrushDot(){ const bg = state.rainbow
     ? 'conic-gradient(from 0deg,#ff4d4f,#ffd21a,#37c86b,#20b8e6,#9a5bff,#ff4d4f)' : state.color;
-    brushDot.style.background = bg; if(paletteDot) paletteDot.style.background = bg; }
+    brushDot.style.background = bg; if(paletteDot) paletteDot.style.background = bg; if(orbDot) orbDot.style.background = bg; }
 
   // brush style picker
   const brushModal=document.getElementById('brushModal'), brushGrid=document.getElementById('brushGrid');
