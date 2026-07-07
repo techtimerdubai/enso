@@ -662,6 +662,7 @@
     else if(a==='replay') startReplay();
     else if(a==='seal') openSeal();
     else if(a==='sticker') openStickers();
+    else if(a==='install') doInstall();
     else if(a==='clear'){ if(confirm('Clear the whole canvas? This cannot be undone.')){ strokes=[];opSizes=[];redoStack=[];gridRebuild();invalidate();save(); toast('Fresh paper ✨'); } }
   }));
   const axesLabel=document.getElementById('axesLabel');
@@ -889,6 +890,22 @@
   let toastT; function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.remove('hidden'); t.style.opacity='1';
     clearTimeout(toastT); toastT=setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.classList.add('hidden'),300); }, 1900); }
   let hintT=setTimeout(hideHint,6500); function hideHint(){ const h=document.getElementById('hint'); if(h) h.style.opacity='0'; clearTimeout(hintT); }
+
+  /* ---------------- install (Add to Home screen / desktop shortcut) ---------------- */
+  let deferredPrompt = null;
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; });
+  addEventListener('appinstalled', () => { deferredPrompt = null; toast('Installed! Find Ensō on your home screen 🎉'); });
+  async function doInstall(){
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    if(standalone){ toast('Ensō is already installed ✓'); return; }
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      try{ await deferredPrompt.userChoice; }catch(e){}
+      deferredPrompt = null; return;
+    }
+    if(/iphone|ipad|ipod/i.test(navigator.userAgent)) toast('On iPhone/iPad: tap Share ⬆ then “Add to Home Screen”');
+    else toast('Open your browser menu → “Install app” / “Add to Home screen”');
+  }
 
   /* ---------------- boot ---------------- */
   load(); gridRebuild(); selectTool(state.tool); updateHud();
