@@ -62,32 +62,6 @@ A free, ad-free, sign-in-free alternative to paid infinite-canvas apps — one t
 
 ---
 
-## Installation & setup
-
-Ensō is a **zero-build static web app** — plain HTML, CSS, and vanilla JavaScript. No frameworks, no bundler, no dependencies.
-
-### Run it locally
-Any static file server works. For example, with Python:
-
-```bash
-# from the project folder
-python -m http.server 8080
-# then open http://localhost:8080
-```
-
-Or with Node:
-
-```bash
-npx serve .
-```
-
-> A local server is required (rather than opening `index.html` directly) so that the service worker and manifest load correctly.
-
-### Deploy it
-Because it is static, it hosts anywhere:
-
-- **GitHub Pages** — push to a repo and enable Pages (this is how the live app is hosted).
-- **Netlify / Cloudflare Pages / Vercel** — drag-and-drop the folder or connect the repo; no build command needed (publish directory = project root).
 
 ### Install as an app
 Open the [live app](https://techtimerdubai.github.io/Enso/) and:
@@ -118,29 +92,6 @@ Open the [live app](https://techtimerdubai.github.io/Enso/) and:
 - **Make a mandala:** tap **Mandala** in the tool tray → draw one stroke → it mirrors into a symmetric pattern.
 - **Sign your art:** Menu → **Ink seal** → type your name → **Use as signature** → tap the canvas to stamp it.
 - **Save your work:** Menu → **PNG** (image), **SVG** (vector), or **Save file** (re-openable `.enso.json`).
-
----
-
-## Project structure
-
-```
-Enso/
-├── index.html            App shell and all UI markup
-├── style.css             All styling (glassmorphic dark UI, responsive, safe-area aware)
-├── app.js                The entire application — a single IIFE:
-│                           • infinite-canvas engine (world-space vectors, camera, DPR)
-│                           • brush engine, smoothing, shape recognition
-│                           • layers, selection & affine transforms
-│                           • floating-origin re-basing for deep zoom
-│                           • PWA install, export/share, replay, ink seal
-├── sw.js                 Service worker (network-first, offline-capable, versioned cache)
-├── manifest.webmanifest  PWA manifest (name, icons, theme)
-├── icons/                App icons (SVG + PNG) and social-preview images
-├── LICENSE               Source-available licence (see below)
-└── README.md             This file
-```
-
-**Architecture in one line:** strokes are stored as vectors in world space and re-rasterised on a single `<canvas>` at the live zoom every frame, which is why the drawing stays sharp at any magnification.
 
 ---
 
@@ -181,7 +132,7 @@ Chrome, Edge, Safari, and Firefox on Android, iOS, and desktop. It is optimised 
 
 ## Credits & acknowledgements
 
-- **Ideas & inspiration** — Aayansh 🌟
+- **Ideas & inspiration** — Aayansh Deekonda🌟
 - **Design & development** — Papa 💛
 - Inspired by the spirit of the Japanese **ensō** and the joy of endless paper.
 
@@ -191,18 +142,5 @@ If Ensō brings a little calm or fun to your day and you'd like to say thanks, t
 
 ## License & copyright
 
-**Copyright © 2026 techtimerdubai. All rights reserved.**
-
-Ensō is **source-available**: the code is published openly so anyone can read, study, and learn from it, and the app is free to use for personal enjoyment. It is **not** offered under a permissive open-source licence.
-
-Anyone wishing to **reuse, redistribute, modify, or use this code beyond the terms of the licence** — including any commercial use — must first obtain permission. For permission or licensing inquiries, please contact:
-
-📧 **techtimerdubai@gmail.com**
-
 See the [LICENSE](LICENSE) file for full terms.
 
-<div align="center">
-
-*Made with care. Now go fill the endless page.* 🎨✨
-
-</div>
