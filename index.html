@@ -66,9 +66,6 @@
     <button id="stickerBtn" class="tchip tool" aria-label="Stickers" title="Stickers">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg>
     </button>
-    <button class="tchip tool" data-tool="pan" aria-label="Pan / hand" aria-pressed="false" title="Pan / hand (H or Space)">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V13m0-1.5a1.5 1.5 0 0 1 3 0V16a5 5 0 0 1-5 5h-2.2a4 4 0 0 1-3-1.4L6 16.5a1.5 1.5 0 0 1 2.2-2L9 15.3"/></svg>
-    </button>
   </div>
 
   <!-- Colour + size tray pops up above the bar -->
@@ -88,6 +85,7 @@
     <button id="redo" class="rbtn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"/></svg></button>
     <button id="clearBtn" class="rbtn rail-clear" aria-label="Clear canvas" title="Clear canvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M7 7l1 12h8l1-12"/></svg></button>
     <span class="sep" aria-hidden="true"></span>
+    <button id="panBtn" class="rbtn tool" data-tool="pan" aria-label="Pan / hand" aria-pressed="false" title="Pan / hand (H or Space)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V13m0-1.5a1.5 1.5 0 0 1 3 0V16a5 5 0 0 1-5 5h-2.2a4 4 0 0 1-3-1.4L6 16.5a1.5 1.5 0 0 1 2.2-2L9 15.3"/></svg></button>
     <button id="menuBtn" class="rbtn" aria-label="More actions" aria-haspopup="true" aria-expanded="false" title="Menu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg></button>
   </div>
 
@@ -107,8 +105,7 @@
       <button data-act="symaxes" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/></svg></span>Mandala <em id="axesLabel">6</em></button>
       <button data-act="fit" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></span>Fit to art</button>
       <button data-act="home" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v3M12 17v3M4 12h3M17 12h3M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg></span>Recenter</button>
-      <button data-act="theme" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 100 16 8 8 0 000-16zM12 4v16"/></svg></span>Paper</button>
-      <button data-act="grid" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9.7h16M4 14.3h16M9.3 5v14M14.7 5v14"/></svg></span>Grid</button>
+      <button data-act="theme" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 13a8 8 0 11-9-9 6 6 0 009 9z"/></svg></span>Dark mode</button>
       <button data-act="install" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v9m0 0l-3-3m3 3l3-3M5 16v2a2 2 0 002 2h10a2 2 0 002-2v-2"/></svg></span>Install app</button>
       <button data-act="donate" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 20s-6.5-4-6.5-8.5A3.5 3.5 0 0112 8a3.5 3.5 0 016.5 3.5C18.5 16 12 20 12 20z"/></svg></span>Support</button>
     </div>

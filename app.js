@@ -188,6 +188,7 @@
     maybeRebase();
     paintPaper();
     if(replay.active){
+      if(replay.outro){ drawEndCard(); return; }              // branded closing card (in recordings)
       octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
       worldTransform(octx);
       drawScene(octx, strokes, replay.revealed);
@@ -1105,8 +1106,7 @@
     const a=b.dataset.act; toggleSheet(false); buzz(6);
     if(a==='home'){ animateCam(0,0,1); }
     else if(a==='fit') zoomToFit();
-    else if(a==='theme'){ state.theme=state.theme==='dark'?'light':'dark'; invalidate(); saveSoon(); }
-    else if(a==='grid'){ setPaper(state.paper==='cream'?'dots':'cream'); }
+    else if(a==='theme'){ state.theme=state.theme==='dark'?'light':'dark'; invalidate(); saveSoon(); toast(state.theme==='dark'?'Dark mode':'Light mode'); }
     else if(a==='shapesnap'){ state.shapeSnap=!state.shapeSnap; toast(state.shapeSnap?'✦ Shape snap ON — draw a circle, box, line…':'Shape snap off'); saveSoon(); }
     else if(a==='symaxes') cycleAxes();
     else if(a==='png') exportPNG();
@@ -1242,10 +1242,50 @@
   const rSeek=document.getElementById('replaySeek'), rToggle=document.getElementById('replayToggle'), rRec=document.getElementById('replayRec');
   function totalUnits(){ let n=0; for(const s of strokes) n += s.tool==='stamp'?1:Math.max(1,s.pts.length); return n; }
   const easeInOut = t => (1 - Math.cos(Math.PI * clamp(t,0,1))) / 2;   // easeInOutSine — gentle start & finish
+  // bounding box of the strokes/points revealed so far (uses stroke bbs + the one partial stroke)
+  function revealedBounds(upTo){
+    let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity,count=0,found=false;
+    for(const s of strokes){
+      const len = s.tool==='stamp' ? 1 : Math.max(1, s.pts?s.pts.length:1);
+      if(count+len<=upTo){
+        if(s.bb){ a=Math.min(a,s.bb.minX);b=Math.min(b,s.bb.minY);c=Math.max(c,s.bb.maxX);d=Math.max(d,s.bb.maxY);found=true; }
+        count+=len;
+      } else {
+        const rem=Math.max(1, Math.ceil(upTo-count));
+        if(s.pts){ for(let i=0;i<Math.min(rem,s.pts.length);i++){ const p=s.pts[i]; a=Math.min(a,p.x);b=Math.min(b,p.y);c=Math.max(c,p.x);d=Math.max(d,p.y);found=true; } }
+        else if(s.bb){ a=Math.min(a,s.bb.minX);b=Math.min(b,s.bb.minY);c=Math.max(c,s.bb.maxX);d=Math.max(d,s.bb.maxY);found=true; }
+        break;
+      }
+    }
+    return found ? {minX:a,minY:b,maxX:c,maxY:d} : null;
+  }
+  // camera that frames what's revealed so far → starts tight on the first marks, eases out to the whole piece
+  function replayCamTarget(revealed){
+    const bb=revealedBounds(Math.max(1,revealed)); if(!bb) return null;
+    const w=Math.max(bb.maxX-bb.minX, 24), h=Math.max(bb.maxY-bb.minY, 24);
+    let s=clamp(Math.min(innerWidth/(w*1.6), innerHeight/(h*1.6)), MIN_SCALE, 4);
+    const cx=(bb.minX+bb.maxX)/2, cy=(bb.minY+bb.maxY)/2;
+    return { scale:s, x: innerWidth/(2*s)-cx, y: innerHeight/(2*s)-cy };
+  }
+  function drawEndCard(){
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle=paperColor(); ctx.fillRect(0,0,innerWidth,innerHeight);
+    const dark = state.theme==='dark';
+    const cx=innerWidth/2, cy=innerHeight/2 - Math.min(innerWidth,innerHeight)*0.06, R=Math.min(innerWidth,innerHeight)*0.13;
+    ctx.strokeStyle='#e0503a'; ctx.lineWidth=Math.max(6,R*0.15); ctx.lineCap='round';
+    ctx.beginPath(); ctx.arc(cx,cy,R, Math.PI*0.16, Math.PI*1.96); ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle=dark?'#f4f1ee':'#26262e'; ctx.font='600 '+Math.round(R*0.52)+'px "Fredoka",system-ui,sans-serif';
+    ctx.fillText('Ensō 円相', cx, cy+R+Math.round(R*0.62));
+    ctx.fillStyle=dark?'#a6a6b2':'#8a877e'; ctx.font='500 '+Math.round(R*0.24)+'px system-ui,sans-serif';
+    ctx.fillText('techtimerdubai.github.io/Enso', cx, cy+R+Math.round(R*1.05));
+  }
   function startReplay(){
     if(!strokes.length){ toast('Draw something first ✍️'); return; }
     replay.total=totalUnits(); replay.elapsed=0; replay.revealed=0; replay.active=true; replay.playing=true; replay.last=performance.now();
-    replay.dur=clamp(replay.total/150, 3, 14);
+    replay.dur=clamp(replay.total/150, 3, 14); replay.outro=0;
+    replay.savedCam={ x:cam.x, y:cam.y, scale:cam.scale };   // restore the view on exit
+    const t0=replayCamTarget(1); if(t0) Object.assign(cam, t0);   // open framed on the first marks
     replayBar.classList.remove('hidden'); rToggle.textContent='⏸'; toggleZen(true); pushGuard();
     cancelAnimationFrame(replay.raf); loopReplay();
   }
@@ -1253,13 +1293,22 @@
     const now=performance.now(), durMs=replay.dur*1000;
     if(replay.playing){
       replay.elapsed = Math.min(durMs, replay.elapsed + (now-replay.last));
-      if(replay.elapsed>=durMs){ replay.playing=false; rToggle.textContent='↺'; if(replay.rec) stopRecording(); }
+      if(replay.elapsed>=durMs){ replay.playing=false; rToggle.textContent='↺';
+        if(replay.rec && !replay.outro) replay.outro=now;      // any recording → play the branded outro
+        else if(!replay.rec) {}                                 // plain viewing → just rest on the finished art
+      }
     }
     replay.last=now;
-    const t = durMs ? replay.elapsed/durMs : 1;
-    replay.revealed = easeInOut(t) * replay.total;         // eased reveal → flows naturally
-    rSeek.value = Math.round(t*1000)||0;
-    rSeek.style.setProperty('--rp', Math.round(t*100)+'%');  // accent progress fill
+    if(replay.outro){
+      if(now-replay.outro >= 1100){ replay.outro=0; stopRecording(); }
+    } else {
+      const t = durMs ? replay.elapsed/durMs : 1;
+      replay.revealed = easeInOut(t) * replay.total;         // eased reveal → flows naturally
+      const tg=replayCamTarget(replay.revealed);             // cinematic auto-follow camera
+      if(tg){ const k=0.10; cam.scale+=(tg.scale-cam.scale)*k; cam.x+=(tg.x-cam.x)*k; cam.y+=(tg.y-cam.y)*k; }
+      rSeek.value = Math.round(t*1000)||0;
+      rSeek.style.setProperty('--rp', Math.round(t*100)+'%');
+    }
     render();
     if(replay.active) replay.raf=requestAnimationFrame(loopReplay);
   }
@@ -1267,8 +1316,10 @@
     replay.playing=!replay.playing; replay.last=performance.now(); rToggle.textContent=replay.playing?'⏸':'▶'; });
   rSeek.addEventListener('input',()=>{ replay.playing=false; rToggle.textContent='▶'; replay.elapsed=(+rSeek.value/1000)*replay.dur*1000; replay.last=performance.now(); });
   document.getElementById('replayExit').addEventListener('click', exitReplay);
-  function exitReplay(){ replay.active=false; replay.playing=false; cancelAnimationFrame(replay.raf);
-    if(replay.rec) stopRecording(); replayBar.classList.add('hidden'); document.body.classList.remove('zen'); invalidate(); }
+  function exitReplay(){ replay.active=false; replay.playing=false; replay.outro=0; cancelAnimationFrame(replay.raf);
+    if(replay.rec) stopRecording();
+    if(replay.savedCam){ Object.assign(cam, replay.savedCam); replay.savedCam=null; }   // restore the pre-replay view
+    replayBar.classList.add('hidden'); document.body.classList.remove('zen'); invalidate(); }
 
   rRec.addEventListener('click',()=>{ replay.rec ? stopRecording() : startRecording(false); });
   const rShare=document.getElementById('replayShare');
@@ -1285,7 +1336,8 @@
         rRec.classList.remove('recording'); rRec.textContent='● REC';
         if(wasShare) shareReplayBlob(blob); else { downloadBlob(blob,'enso-'+stamp()+'.webm'); toast('Video saved 🎬'); } };
       replay.rec.start(); rRec.classList.add('recording'); rRec.textContent='◼ STOP';
-      replay.elapsed=0; replay.playing=true; replay.last=performance.now(); rToggle.textContent='⏸';
+      replay.elapsed=0; replay.outro=0; replay.playing=true; replay.last=performance.now(); rToggle.textContent='⏸';
+      const t0=replayCamTarget(1); if(t0) Object.assign(cam, t0);   // snap to the opening frame for a clean recording
       toast(share ? 'Filming your replay to share…' : 'Recording the replay…');
     }catch(err){ toast('Could not start recording'); }
   }
