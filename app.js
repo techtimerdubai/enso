@@ -17,7 +17,8 @@
 
   /* ---------------- camera & document ---------------- */
   const cam = { x: 0, y: 0, scale: 1 };
-  const MIN_SCALE = 0.0002, MAX_SCALE = 100000;   // 0.02% … 10,000,000% — deep "worlds within worlds" zoom, precision-safe
+  const MIN_SCALE = 0.0002, MAX_SCALE = 1e8;   // 0.02% … 10,000,000,000% (10 billion %) — verified-crisp ceiling; the canvas rasterizer's float32 transform limits deeper
+  const REBASE_BUDGET = 1e6;   // when cam.scale*|cam| exceeds this, re-base the world origin to the camera so far-from-origin stays as crisp as near-origin (float32 rasterizer starts losing sub-pixels ~8e6)
   let dpr = clamp(window.devicePixelRatio || 1, 1, 3);
   let cacheValid = false;                 // is inkCv up to date for the current camera?
   const invalidate = () => { cacheValid = false; requestRender(); };
@@ -161,6 +162,7 @@
     catch(err){ /* never let one bad frame kill the app */ }
   }
   function renderInner(){
+    maybeRebase();
     paintPaper();
     if(replay.active){
       octx.setTransform(1,0,0,1,0,0); octx.clearRect(0,0,overCv.width,overCv.height);
@@ -857,6 +859,31 @@
     const w=bb.maxX-bb.minX, h=bb.maxY-bb.minY;
     const s = clamp(Math.min(innerWidth/w, innerHeight/h)*0.9, MIN_SCALE, 8);
     animateCam(innerWidth/(2*s)-(bb.minX+w/2), innerHeight/(2*s)-(bb.minY+h/2), s);
+  }
+
+  // Floating origin: when the camera drifts far enough that float64 precision could
+  // degrade (scale*|cam| large), shift ALL world coordinates by +cam and reset cam to 0.
+  // The rendered image is unchanged, but coordinates stay small → crisp at any zoom, forever.
+  // Only runs when fully idle, so it never desyncs a live stroke, gesture or animation.
+  function maybeRebase(){
+    if(live || sel || pinch || panLast || inertiaRAF || camAnim || replay.active) return;
+    if(cam.scale * Math.max(Math.abs(cam.x), Math.abs(cam.y)) < REBASE_BUDGET) return;
+    const dx = cam.x, dy = cam.y;
+    for(const s of strokes){
+      if(s.tool==='stamp'){ s.x+=dx; s.y+=dy; s.bb=stampBB(s); }
+      else { for(const p of s.pts){ p.x+=dx; p.y+=dy; }
+             if(s.bb){ s.bb.minX+=dx; s.bb.maxX+=dx; s.bb.minY+=dy; s.bb.maxY+=dy; } }
+    }
+    // transform ops carry an absolute matrix — conjugate its translation by the shift.
+    // (move ops store deltas → translation-invariant; add/delete reference shifted objects.)
+    for(const stack of [undoStack, redoStack]) for(const op of stack){
+      if(op.type==='transform' && op.m){ const m=op.m;
+        m.e += dx - (m.a*dx + m.c*dy);
+        m.f += dy - (m.b*dx + m.d*dy);
+      }
+    }
+    cam.x = 0; cam.y = 0;
+    gridRebuild(); invalidate();
   }
 
   /* ---------------- UI: swatches / tools / size ---------------- */
