@@ -101,6 +101,7 @@
   <div id="sheet" class="glass hidden" role="menu" aria-label="More actions">
     <div class="sheet-grid">
       <button data-act="share" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v13"/></svg></span>Share</button>
+      <button data-act="photo" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4zM12 16.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z"/></svg></span>Photo</button>
       <button data-act="savefile" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h11l3 3v11H5zM8 5v5h6V5M8 14h8v5H8z"/></svg></span>Save file</button>
       <button data-act="openfile" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7a1 1 0 011-1h4l2 2h8a1 1 0 011 1v9a1 1 0 01-1 1H5a1 1 0 01-1-1z"/></svg></span>Open file</button>
       <button data-act="png" role="menuitem"><span class="mi" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 10.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg></span>PNG</button>
@@ -119,6 +120,7 @@
     </div>
     <a class="ghlink" href="https://github.com/techtimerdubai/Enso" target="_blank" rel="noopener noreferrer">Ensō 円相 — Free &amp; Open Source • Ideas by Aayansh • Built by Papa</a>
   </div>
+  <input id="photoInput" type="file" accept="image/*" hidden aria-hidden="true" />
 
   <!-- Seal maker modal -->
   <div id="sealModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="sealTitle">

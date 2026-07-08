@@ -89,7 +89,7 @@
   } catch(e){ if(!quotaWarned){ quotaWarned = true; toast('Storage full — older work may not auto-save. Export to keep it.'); } } };
   const saveSoon = debounce(save, 400);
   function serialize(list){ return list.map(s => s.tool==='stamp'
-    ? { tool:'stamp', dataURL:s.dataURL, x:r2(s.x), y:r2(s.y), size:r2(s.size), layer:s.layer }
+    ? { tool:'stamp', dataURL:s.dataURL, x:r2(s.x), y:r2(s.y), size:r2(s.size), ar:s.ar!==1?s.ar:undefined, rot:s.rot||undefined, layer:s.layer }
     : { tool:s.tool, color:s.color, size:s.size, layer:s.layer, snapped:s.snapped?1:undefined, pts:s.pts.map(p=>[r2(p.x),r2(p.y),r2(p.w)]) }); }
   function applyDoc(d){
     if(!d) return;
@@ -99,7 +99,7 @@
     if(d.state){ state.theme=d.state.theme||state.theme; state.grid=d.state.grid!==false; state.axes=d.state.axes||6; state.shapeSnap=!!d.state.shape; }
     if(Array.isArray(d.layers) && d.layers.length){ layers=d.layers; activeLayer=d.activeLayer||layers[0].id; nextLayerId=d.nextLayerId||(Math.max(...layers.map(l=>l.id))+1); }
     if(Array.isArray(d.strokes)) for(const s of d.strokes){
-      if(s.tool==='stamp'){ const st=makeStamp(s.dataURL, s.x, s.y, s.size); st.layer=s.layer||layers[0].id; strokes.push(st); }
+      if(s.tool==='stamp'){ const st=makeStamp(s.dataURL, s.x, s.y, s.size, undefined, s.ar, s.rot); st.layer=s.layer||layers[0].id; strokes.push(st); }
       else { const st={ tool:s.tool, color:s.color, size:s.size, layer:s.layer||layers[0].id, snapped:!!s.snapped, pts:s.pts.map(p=>({x:p[0],y:p[1],w:p[2]})) };
         finalizeBB(st); strokes.push(st); }
     }
@@ -363,11 +363,22 @@
   function lighten(c){ const h=cssColorToHex(c); const v=i=>parseInt(h.slice(i,i+2),16);
     const m=x=>Math.round(x+(255-x)*0.6); return `rgb(${m(v(1))},${m(v(3))},${m(v(5))})`; }
 
+  // axis-aligned bounding box of a stamp/image (accounts for aspect ratio + rotation)
+  function stampBB(s){
+    const hw=s.size/2, hh=(s.size*(s.ar||1))/2, r=s.rot||0, co=Math.abs(Math.cos(r)), si=Math.abs(Math.sin(r));
+    const ex=co*hw+si*hh, ey=si*hw+co*hh;
+    return { minX:s.x-ex, minY:s.y-ey, maxX:s.x+ex, maxY:s.y+ey };
+  }
   function drawStampItem(target, s){
     if(!s._img || !s._img.complete || !s._img.naturalWidth) return;   // wait until decoded
-    const half = s.size/2;
+    const w = s.size, h = s.size*(s.ar||1);
     target.globalAlpha = 1; target.globalCompositeOperation='source-over';
-    try { target.drawImage(s._img, s.x-half, s.y-half, s.size, s.size); } catch(e){}
+    target.imageSmoothingEnabled = true; target.imageSmoothingQuality = 'high';   // stays sharp scaling down, soft (not blocky) past native res
+    target.save();
+    target.translate(s.x, s.y);
+    if(s.rot) target.rotate(s.rot);
+    try { target.drawImage(s._img, -w/2, -h/2, w, h); } catch(e){}
+    target.restore();
   }
 
   /* ---------------- input / drawing ---------------- */
@@ -634,7 +645,7 @@
   function translateItems(items, dx, dy){
     for(const s of items){
       gridRemove(s);
-      if(s.tool==='stamp'){ s.x+=dx; s.y+=dy; s.bb={minX:s.x-s.size/2,minY:s.y-s.size/2,maxX:s.x+s.size/2,maxY:s.y+s.size/2}; }
+      if(s.tool==='stamp'){ s.x+=dx; s.y+=dy; s.bb=stampBB(s); }
       else { for(const p of s.pts){ p.x+=dx; p.y+=dy; } finalizeBB(s); }
       gridAdd(s);
     }
@@ -673,18 +684,18 @@
   const matScaleOf=m=>Math.sqrt(Math.abs(m.a*m.d-m.b*m.c));
   function xformOne(s, apply){
     gridRemove(s);
-    if(s.tool==='stamp'){ const r=apply(s.x,s.y); s.x=r.x; s.y=r.y; s.size=Math.max(2, s.size*r.sc);
-      s.bb={minX:s.x-s.size/2,minY:s.y-s.size/2,maxX:s.x+s.size/2,maxY:s.y+s.size/2}; }
+    if(s.tool==='stamp'){ const c=apply(s.x,s.y), e=apply(s.x+1,s.y); const dx=e.x-c.x, dy=e.y-c.y;
+      s.x=c.x; s.y=c.y; s.size=Math.max(2, s.size*(Math.hypot(dx,dy)||1)); s.rot=(s.rot||0)+Math.atan2(dy,dx); s.bb=stampBB(s); }
     else { for(const p of s.pts){ const r=apply(p.x,p.y); p.x=r.x; p.y=r.y; p.w*=r.sc; } finalizeBB(s); }
     gridAdd(s);
   }
   function applyMatrixToItems(items, m){ const sc=matScaleOf(m);
     for(const s of items) xformOne(s, (x,y)=>({ x:m.a*x+m.c*y+m.e, y:m.b*x+m.d*y+m.f, sc })); }
-  function snapshotSelection(){ return [...selection].map(s=>({ item:s, x:s.x, y:s.y, size:s.size, pts: s.pts?s.pts.map(p=>({x:p.x,y:p.y,w:p.w})):null })); }
-  function applySnapshot(list, m){ const sc=matScaleOf(m);
+  function snapshotSelection(){ return [...selection].map(s=>({ item:s, x:s.x, y:s.y, size:s.size, rot:s.rot||0, pts: s.pts?s.pts.map(p=>({x:p.x,y:p.y,w:p.w})):null })); }
+  function applySnapshot(list, m){ const sc=matScaleOf(m), dr=Math.atan2(m.b, m.a);
     for(const snap of list){ const s=snap.item; gridRemove(s);
       if(s.tool==='stamp'){ s.x=m.a*snap.x+m.c*snap.y+m.e; s.y=m.b*snap.x+m.d*snap.y+m.f; s.size=Math.max(2, snap.size*sc);
-        s.bb={minX:s.x-s.size/2,minY:s.y-s.size/2,maxX:s.x+s.size/2,maxY:s.y+s.size/2}; }
+        s.rot=snap.rot+dr; s.bb=stampBB(s); }
       else { for(let i=0;i<snap.pts.length;i++){ const o=snap.pts[i], p=s.pts[i]; p.x=m.a*o.x+m.c*o.y+m.e; p.y=m.b*o.x+m.d*o.y+m.f; p.w=o.w*sc; } finalizeBB(s); }
       gridAdd(s); }
   }
@@ -990,6 +1001,7 @@
     else if(a==='savefile') exportDoc();
     else if(a==='openfile') importDoc();
     else if(a==='share') shareImage();
+    else if(a==='photo'){ if(photoInput) photoInput.click(); }
     else if(a==='replay') startReplay();
     else if(a==='seal') openSeal();
     else if(a==='sticker') openStickers();
@@ -1034,9 +1046,9 @@
     const st=makeStamp(p.dataURL, w.x, w.y, size, p.img);
     redoStack.length=0; commit([st]); clearPendingStamp(); buzz(14); requestRender();
   }
-  function makeStamp(dataURL, x, y, size, img){
-    const st={ tool:'stamp', dataURL, x, y, size, layer:activeLayer };
-    st.bb={minX:x-size/2,minY:y-size/2,maxX:x+size/2,maxY:y+size/2};
+  function makeStamp(dataURL, x, y, size, img, ar, rot){
+    const st={ tool:'stamp', dataURL, x, y, size, ar:ar||1, rot:rot||0, layer:activeLayer };
+    st.bb=stampBB(st);
     st._img = img || (()=>{ const im=new Image(); im.onload=()=>{ invalidate(); }; im.src=dataURL; return im; })();
     return st;
   }
@@ -1045,6 +1057,47 @@
     const S=256, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
     x.textAlign='center'; x.textBaseline='middle'; x.font='200px "Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",sans-serif';
     x.fillText(em, S/2, S/2+10); return c.toDataURL('image/png');
+  }
+
+  /* ---------------- photos / images / artwork ---------------- */
+  const photoInput = document.getElementById('photoInput');
+  if(photoInput) photoInput.addEventListener('change', e=>{
+    const f = e.target.files && e.target.files[0]; if(f) addPhotoFromFile(f); e.target.value=''; });
+  function addPhotoFromFile(file){
+    if(!file || !/^image\//.test(file.type||'')){ toast('Please pick an image'); return; }
+    toast('Adding photo…');
+    const reader=new FileReader();
+    reader.onerror=()=>toast('Could not read that file');
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>toast('Could not load that image');
+      img.onload=()=>{
+        // downscale to a sane max so it stays sharp but doesn't blow local storage
+        const MAX=2048; let w=img.naturalWidth||1, h=img.naturalHeight||1;
+        const dsc=Math.min(1, MAX/Math.max(w,h)); const cw=Math.max(1,Math.round(w*dsc)), ch=Math.max(1,Math.round(h*dsc));
+        const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+        const cx=c.getContext('2d'); cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,cw,ch);
+        // JPEG keeps photos small; PNG preserves transparency for smaller/graphic art
+        const usePng = (w*h <= 700*700) || /png|gif|webp|svg/.test(file.type);
+        const dataURL = c.toDataURL(usePng?'image/png':'image/jpeg', 0.86);
+        placeImage(dataURL, ch/cw);
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function placeImage(dataURL, ar){
+    const ctr=toWorld(innerWidth/2, innerHeight/2);
+    const size=(0.6*Math.min(innerWidth, innerHeight))/cam.scale;   // ~60% of the screen, in world units
+    const pre=new Image();
+    pre.onload=()=>{
+      const st=makeStamp(dataURL, ctr.x, ctr.y, size, pre, ar, 0);
+      redoStack.length=0; commit([st]);
+      selectTool('select'); selection=new Set([st]); updateSelBar();
+      invalidate(); requestRender(); buzz(14); toast('🖼️ Added — drag to move · corners resize · top handle rotates');
+    };
+    pre.onerror=()=>toast('Could not place that image');
+    pre.src=dataURL;
   }
 
   function renderSeal(text){
