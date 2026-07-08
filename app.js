@@ -1088,11 +1088,23 @@
   { const h=document.getElementById('hud'); if(h) h.addEventListener('click', ()=>{ zoomToFit(); }); }
   function clearAll(){
     if(!strokes.length){ toast('Canvas is already empty'); return; }
+    playClearAnim();                                      // snapshot the drawing + toss it away
     const items = strokes.slice();
     removeItems(items); pushOp({type:'delete', items});   // undoable — no confirm dialog
     selection.clear(); sel=null; updateSelBar();
-    invalidate(); saveSoon(); buzz(12);
+    invalidate(); saveSoon(); buzz(14);
     toastAction('Canvas cleared', 'Undo', ()=>{ undo(); buzz(8); });
+  }
+  // playful "crumple & toss": the current drawing squashes, wobbles, then tumbles off-screen,
+  // revealing the fresh blank canvas underneath. GPU-friendly (CSS transform on a snapshot).
+  function playClearAnim(){
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let url; try{ url=canvas.toDataURL('image/png'); }catch(e){ return; }
+    const img=document.createElement('img'); img.className='clear-anim'; img.src=url; img.alt='';
+    document.body.appendChild(img);
+    const done=()=>{ if(img.parentNode) img.remove(); };
+    img.addEventListener('animationend', done); setTimeout(done, 900);
+    try{ sparkleBurst(innerWidth/2, innerHeight*0.42); }catch(e){}   // little poof as it lifts off
   }
   document.getElementById('clearBtn').addEventListener('click', clearAll);
 

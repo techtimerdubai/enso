@@ -349,6 +349,17 @@ body.select #paper{cursor:crosshair}
 #hint kbd{background:rgba(255,255,255,.1);border-radius:5px;padding:1px 6px;font-family:inherit;font-size:11px}
 .hidden{display:none!important}
 
+/* clear-canvas "crumple & toss" — the old drawing squashes, wobbles, then tumbles off-screen */
+.clear-anim{position:fixed;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;
+  transform-origin:50% 52%;will-change:transform,opacity;
+  animation:ensocrumple 520ms cubic-bezier(.5,.12,.75,.5) forwards}
+@keyframes ensocrumple{
+  0%{transform:scale(1) rotate(0deg);opacity:1}
+  20%{transform:scale(.8) rotate(-6deg);opacity:1}
+  38%{transform:scale(.87) rotate(4deg)}
+  100%{transform:translate(26vw,-74vh) rotate(-28deg) scale(.05);opacity:0}
+}
+
 /* Touch devices: drop keyboard-only hint text */
 @media (pointer:coarse){ .kb-only{display:none} }
 
