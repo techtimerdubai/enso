@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://techtimerdubai.github.io/Enso/"><img src="icons/og-image.png" alt="Ensō 円相 — an endless magic drawing page" width="720"></a>
+<a href="https://techtimerdubai.github.io/Enso/"><img src="icons/banner.png" alt="Ensō 円相 — an endless, infinitely-zoomable drawing canvas" width="820"></a>
 
 # Ensō 円相
 

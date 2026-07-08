@@ -305,6 +305,8 @@ body.eyedrop #paper{cursor:crosshair}
 #replaySeek{flex:1}
 #replaySeek::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer}
 #replaySeek::-moz-range-thumb{width:16px;height:16px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
+#replaySeek{background:linear-gradient(to right, var(--accent) var(--rp,0%), rgba(255,255,255,.18) var(--rp,0%))}
+#replayShare{color:var(--accent);font-weight:600}
 
 /* Selection action bar */
 #selBar{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);

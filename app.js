@@ -1241,48 +1241,62 @@
   const replayBar=document.getElementById('replayBar');
   const rSeek=document.getElementById('replaySeek'), rToggle=document.getElementById('replayToggle'), rRec=document.getElementById('replayRec');
   function totalUnits(){ let n=0; for(const s of strokes) n += s.tool==='stamp'?1:Math.max(1,s.pts.length); return n; }
+  const easeInOut = t => (1 - Math.cos(Math.PI * clamp(t,0,1))) / 2;   // easeInOutSine — gentle start & finish
   function startReplay(){
     if(!strokes.length){ toast('Draw something first ✍️'); return; }
-    replay.total=totalUnits(); replay.revealed=0; replay.active=true; replay.playing=true; replay.last=performance.now();
-    replay.dur=clamp(replay.total/140, 2.5, 12);
+    replay.total=totalUnits(); replay.elapsed=0; replay.revealed=0; replay.active=true; replay.playing=true; replay.last=performance.now();
+    replay.dur=clamp(replay.total/150, 3, 14);
     replayBar.classList.remove('hidden'); rToggle.textContent='⏸'; toggleZen(true); pushGuard();
     cancelAnimationFrame(replay.raf); loopReplay();
   }
   function loopReplay(){
-    const now=performance.now();
+    const now=performance.now(), durMs=replay.dur*1000;
     if(replay.playing){
-      const rate=replay.total/(replay.dur*1000);
-      replay.revealed=Math.min(replay.total, replay.revealed + (now-replay.last)*rate);
-      if(replay.revealed>=replay.total){ replay.revealed=replay.total; replay.playing=false; rToggle.textContent='↺'; if(replay.rec) stopRecording(); }
+      replay.elapsed = Math.min(durMs, replay.elapsed + (now-replay.last));
+      if(replay.elapsed>=durMs){ replay.playing=false; rToggle.textContent='↺'; if(replay.rec) stopRecording(); }
     }
-    replay.last=now; rSeek.value=Math.round(replay.revealed/replay.total*1000)||0;
+    replay.last=now;
+    const t = durMs ? replay.elapsed/durMs : 1;
+    replay.revealed = easeInOut(t) * replay.total;         // eased reveal → flows naturally
+    rSeek.value = Math.round(t*1000)||0;
+    rSeek.style.setProperty('--rp', Math.round(t*100)+'%');  // accent progress fill
     render();
     if(replay.active) replay.raf=requestAnimationFrame(loopReplay);
   }
-  rToggle.addEventListener('click',()=>{ if(replay.revealed>=replay.total) replay.revealed=0;
+  rToggle.addEventListener('click',()=>{ if(replay.elapsed>=replay.dur*1000) replay.elapsed=0;
     replay.playing=!replay.playing; replay.last=performance.now(); rToggle.textContent=replay.playing?'⏸':'▶'; });
-  rSeek.addEventListener('input',()=>{ replay.playing=false; rToggle.textContent='▶'; replay.revealed=(+rSeek.value/1000)*replay.total; });
+  rSeek.addEventListener('input',()=>{ replay.playing=false; rToggle.textContent='▶'; replay.elapsed=(+rSeek.value/1000)*replay.dur*1000; replay.last=performance.now(); });
   document.getElementById('replayExit').addEventListener('click', exitReplay);
   function exitReplay(){ replay.active=false; replay.playing=false; cancelAnimationFrame(replay.raf);
     if(replay.rec) stopRecording(); replayBar.classList.add('hidden'); document.body.classList.remove('zen'); invalidate(); }
 
-  rRec.addEventListener('click',()=>{ replay.rec ? stopRecording() : startRecording(); });
-  function startRecording(){
+  rRec.addEventListener('click',()=>{ replay.rec ? stopRecording() : startRecording(false); });
+  const rShare=document.getElementById('replayShare');
+  if(rShare) rShare.addEventListener('click',()=>{ if(replay.rec){ stopRecording(); return; } startRecording(true); });
+  function startRecording(share){
     if(!canvas.captureStream || typeof MediaRecorder==='undefined'){ toast('Recording not supported on this browser'); return; }
     try{
       const type = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-      const stream=canvas.captureStream(30); replay.chunks=[]; replay.stream=stream;
+      const stream=canvas.captureStream(30); replay.chunks=[]; replay.stream=stream; replay.shareMode=!!share;
       replay.rec=new MediaRecorder(stream,{ mimeType:type, videoBitsPerSecond:8_000_000 });
       replay.rec.ondataavailable=e=>{ if(e.data.size) replay.chunks.push(e.data); };
-      replay.rec.onstop=()=>{ const blob=new Blob(replay.chunks,{type:'video/webm'}); downloadBlob(blob,'enso-'+stamp()+'.webm');
-        try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} replay.rec=null; replay.stream=null;
-        rRec.classList.remove('recording'); rRec.textContent='● REC'; toast('Video saved 🎬'); };
+      replay.rec.onstop=()=>{ const blob=new Blob(replay.chunks,{type:'video/webm'}); const wasShare=replay.shareMode;
+        try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} replay.rec=null; replay.stream=null; replay.shareMode=false;
+        rRec.classList.remove('recording'); rRec.textContent='● REC';
+        if(wasShare) shareReplayBlob(blob); else { downloadBlob(blob,'enso-'+stamp()+'.webm'); toast('Video saved 🎬'); } };
       replay.rec.start(); rRec.classList.add('recording'); rRec.textContent='◼ STOP';
-      replay.revealed=0; replay.playing=true; replay.last=performance.now(); rToggle.textContent='⏸';
-      toast('Recording the replay…');
+      replay.elapsed=0; replay.playing=true; replay.last=performance.now(); rToggle.textContent='⏸';
+      toast(share ? 'Filming your replay to share…' : 'Recording the replay…');
     }catch(err){ toast('Could not start recording'); }
   }
   function stopRecording(){ try{ if(replay.rec && replay.rec.state!=='inactive') replay.rec.stop(); }catch(e){} }
+  async function shareReplayBlob(blob){
+    const file=new File([blob],'enso-replay-'+stamp()+'.webm',{type:'video/webm'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({ files:[file], title:'Ensō 円相', text:'Watch my drawing come to life ✨' }); return; }catch(e){ if(e && e.name==='AbortError') return; }
+    }
+    downloadBlob(blob,'enso-replay-'+stamp()+'.webm'); toast('Saved replay video (direct share not supported here)');
+  }
 
   /* ---------------- export / share ---------------- */
   function bounds(){
@@ -1426,13 +1440,19 @@
     const tmp=layers[idx]; layers[idx]=layers[t]; layers[t]=tmp; renderLayers(); invalidate(); saveSoon(); }
   function deleteLayer(L){
     if(layers.length<=1){ toast('Keep at least one layer'); return; }
+    // snapshot so an accidental delete can be undone from the snackbar (no confirm dialog)
     const items=strokes.filter(s=>(s.layer||layers[0].id)===L.id);
-    if(items.length && !confirm(`Delete “${L.name}” and its ${items.length} drawing${items.length>1?'s':''}?`)) return;
+    const idx=layers.indexOf(L), prevActive=activeLayer;
     if(items.length) removeItems(items);
     layers=layers.filter(x=>x!==L);
     if(activeLayer===L.id) activeLayer=layers[layers.length-1].id;
-    undoStack=[]; redoStack=[];             // avoid undo referencing a removed layer
-    renderLayers(); updateSelBar(); invalidate(); saveSoon();
+    undoStack=[]; redoStack=[];             // history can't safely reference a removed layer
+    renderLayers(); updateSelBar(); invalidate(); saveSoon(); buzz(12);
+    toastAction(`Deleted “${L.name}”`, 'Undo', ()=>{
+      layers.splice(Math.min(idx,layers.length), 0, L); activeLayer=prevActive;
+      for(const it of items) addItems([it]);
+      renderLayers(); updateSelBar(); invalidate(); saveSoon(); buzz(8);
+    });
   }
   function renderLayers(){
     layerList.innerHTML='';
