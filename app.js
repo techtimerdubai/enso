@@ -1094,16 +1094,23 @@
     selection.clear(); sel=null; updateSelBar();
     invalidate(); saveSoon(); buzz(14);
   }
-  // playful "crumple & toss": the current drawing squashes, wobbles, then tumbles off-screen,
-  // revealing the fresh blank canvas underneath. GPU-friendly (CSS transform on a snapshot).
+  // playful "whoosh into the trash": the drawing squashes, then shrinks and flies into the
+  // trash button (which wiggles), revealing the fresh blank canvas. GPU-friendly CSS on a snapshot.
   function playClearAnim(){
     if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     let url; try{ url=canvas.toDataURL('image/png'); }catch(e){ return; }
     const img=document.createElement('img'); img.className='clear-anim'; img.src=url; img.alt='';
+    const btn=document.getElementById('clearBtn');
+    if(btn){
+      const r=btn.getBoundingClientRect(), tx=r.left+r.width/2, ty=r.top+r.height/2;
+      img.style.setProperty('--clx', Math.round(tx - innerWidth/2)+'px');
+      img.style.setProperty('--cly', Math.round(ty - innerHeight/2)+'px');
+      btn.classList.add('clearwig'); setTimeout(()=>btn.classList.remove('clearwig'), 560);
+      setTimeout(()=>{ try{ sparkleBurst(tx, ty); }catch(e){} buzz(8); }, 430);   // poof as it lands in the bin
+    }
     document.body.appendChild(img);
     const done=()=>{ if(img.parentNode) img.remove(); };
     img.addEventListener('animationend', done); setTimeout(done, 900);
-    try{ sparkleBurst(innerWidth/2, innerHeight*0.42); }catch(e){}   // little poof as it lifts off
   }
   document.getElementById('clearBtn').addEventListener('click', clearAll);
 
