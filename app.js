@@ -1136,6 +1136,7 @@
     else if(a==='replay') startReplay();
     else if(a==='seal') openSeal();
     else if(a==='sticker') openStickers();
+    else if(a==='intro') showIntro();
     else if(a==='install') doInstall();
     else if(a==='layers') openLayers();
     else if(a==='donate') openDonate();
@@ -1606,8 +1607,28 @@
     }
   }
 
+  /* ---------------- first-visit intro ---------------- */
+  let introTimer=0;
+  function showIntro(){
+    const el=document.getElementById('intro'); if(!el) return;
+    el.classList.remove('hidden','closing'); void el.offsetWidth;   // restart the CSS animations
+    clearTimeout(introTimer);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    introTimer=setTimeout(hideIntro, reduce ? 3800 : 14500);
+  }
+  function hideIntro(){
+    const el=document.getElementById('intro'); if(!el || el.classList.contains('hidden')) return;
+    clearTimeout(introTimer); el.classList.add('closing');
+    setTimeout(()=>{ el.classList.add('hidden'); el.classList.remove('closing'); }, 600);
+    try{ localStorage.setItem('enso.introSeen','1'); }catch(e){}
+  }
+  { const el=document.getElementById('intro'); if(el) el.addEventListener('click', hideIntro);
+    const sk=document.getElementById('introSkip'); if(sk) sk.addEventListener('click', e=>{ e.stopPropagation(); hideIntro(); }); }
+  function maybeShowIntro(){ try{ if(localStorage.getItem('enso.introSeen')) return false; }catch(e){ return false; } showIntro(); return true; }
+
   /* ---------------- boot ---------------- */
-  load(); gridRebuild(); selectTool(state.tool); setPalette(state.palette); setPaper(state.paper); updateHud(); maybeShowAppPrompt();
+  load(); gridRebuild(); selectTool(state.tool); setPalette(state.palette); setPaper(state.paper); updateHud();
+  if(!maybeShowIntro()) maybeShowAppPrompt();
   addEventListener('resize', resize);
   if(window.visualViewport) visualViewport.addEventListener('resize', resize);
   resize();
