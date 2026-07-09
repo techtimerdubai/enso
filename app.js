@@ -1617,7 +1617,7 @@
     // dismiss shortly AFTER the finale animation actually finishes playing — this never
     // fires while the tab is hidden, so a backgrounded first load can't silently skip it.
     const fin=el.querySelector('.fin');
-    if(fin) fin.addEventListener('animationend', ()=>{ clearTimeout(introTimer); introTimer=setTimeout(hideIntro, 2400); }, {once:true});
+    if(fin) fin.addEventListener('animationend', ()=>{ clearTimeout(introTimer); introTimer=setTimeout(hideIntro, 250); }, {once:true});
   }
   function showIntro(){ const el=document.getElementById('intro'); if(!el) return; el.classList.remove('closing'); playIntro(el); }
   function hideIntro(){
