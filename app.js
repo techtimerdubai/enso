@@ -1087,13 +1087,12 @@
 
   { const h=document.getElementById('hud'); if(h) h.addEventListener('click', ()=>{ zoomToFit(); }); }
   function clearAll(){
-    if(!strokes.length){ toast('Canvas is already empty'); return; }
+    if(!strokes.length) return;                           // already empty → do nothing, silently
     playClearAnim();                                      // snapshot the drawing + toss it away
     const items = strokes.slice();
-    removeItems(items); pushOp({type:'delete', items});   // undoable — no confirm dialog
+    removeItems(items); pushOp({type:'delete', items});   // undoable via the undo button — no dialog, no message
     selection.clear(); sel=null; updateSelBar();
     invalidate(); saveSoon(); buzz(14);
-    toastAction('Canvas cleared', 'Undo', ()=>{ undo(); buzz(8); });
   }
   // playful "crumple & toss": the current drawing squashes, wobbles, then tumbles off-screen,
   // revealing the fresh blank canvas underneath. GPU-friendly (CSS transform on a snapshot).
