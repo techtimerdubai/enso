@@ -1609,22 +1609,28 @@
 
   /* ---------------- first-visit intro ---------------- */
   let introTimer=0;
-  function showIntro(){
-    const el=document.getElementById('intro'); if(!el) return;
-    el.classList.remove('hidden','closing'); void el.offsetWidth;   // restart the CSS animations
+  const INTRO_KEY='enso.intro2';   // bumped so the (fixed) intro shows once for everyone
+  function playIntro(el){
     clearTimeout(introTimer);
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    introTimer=setTimeout(hideIntro, reduce ? 3800 : 14500);
+    el.classList.add('hidden'); void el.offsetWidth; el.classList.remove('hidden');   // restart every child animation from 0
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){ if(!document.hidden) introTimer=setTimeout(hideIntro, 4200); return; }
+    // dismiss shortly AFTER the finale animation actually finishes playing — this never
+    // fires while the tab is hidden, so a backgrounded first load can't silently skip it.
+    const fin=el.querySelector('.fin');
+    if(fin) fin.addEventListener('animationend', ()=>{ clearTimeout(introTimer); introTimer=setTimeout(hideIntro, 2400); }, {once:true});
   }
+  function showIntro(){ const el=document.getElementById('intro'); if(!el) return; el.classList.remove('closing'); playIntro(el); }
   function hideIntro(){
     const el=document.getElementById('intro'); if(!el || el.classList.contains('hidden')) return;
     clearTimeout(introTimer); el.classList.add('closing');
     setTimeout(()=>{ el.classList.add('hidden'); el.classList.remove('closing'); }, 600);
-    try{ localStorage.setItem('enso.introSeen','1'); }catch(e){}
+    try{ localStorage.setItem(INTRO_KEY,'1'); }catch(e){}
   }
   { const el=document.getElementById('intro'); if(el) el.addEventListener('click', hideIntro);
-    const sk=document.getElementById('introSkip'); if(sk) sk.addEventListener('click', e=>{ e.stopPropagation(); hideIntro(); }); }
-  function maybeShowIntro(){ try{ if(localStorage.getItem('enso.introSeen')) return false; }catch(e){ return false; } showIntro(); return true; }
+    const sk=document.getElementById('introSkip'); if(sk) sk.addEventListener('click', e=>{ e.stopPropagation(); hideIntro(); });
+    // if the tab was backgrounded during the intro, replay it from the top when it returns to view
+    document.addEventListener('visibilitychange', ()=>{ const x=document.getElementById('intro'); if(!document.hidden && x && !x.classList.contains('hidden')) playIntro(x); }); }
+  function maybeShowIntro(){ try{ if(localStorage.getItem(INTRO_KEY)) return false; }catch(e){ return false; } showIntro(); return true; }
 
   /* ---------------- boot ---------------- */
   load(); gridRebuild(); selectTool(state.tool); setPalette(state.palette); setPaper(state.paper); updateHud();
